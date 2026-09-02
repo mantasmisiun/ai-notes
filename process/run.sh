@@ -15,7 +15,6 @@ UNI="$VAULT/$UNIVERSITY_DIR"
 
 MIN_FREE_MIB=7000        # room for whisper large-v3 or an 8B model
 KEEP_AUDIO_DAYS=7        # audio is the only irreplaceable artefact
-SETTLE_SECS=60           # let a file still arriving over sync finish landing
 
 mkdir -p "$STATE" "$NOTES"/{live,transcripts,audio,unfiled}
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
@@ -63,10 +62,22 @@ for audio in "$NOTES/audio"/*.ogg "$NOTES/audio"/*.mp3 \
   [ -f "$transcript" ] && continue
 
   # Recording finished is signalled by the audio file existing at all: the
-  # worker writes it only when it stops. Across machines it also has to finish
-  # arriving, so anything touched in the last minute is left for the next tick.
-  if [ "$(( $(date +%s) - $(stat -c %Y "$audio") ))" -lt "$SETTLE_SECS" ]; then
-    log "waiting: $stamp is still arriving"
+  # worker writes it only when it stops.
+  #
+  # Across machines it also has to finish ARRIVING, and nothing about the file
+  # itself can tell you that. Modification time is preserved by sync tools, so
+  # a file still being written already looks old. And a truncated Opus stream
+  # is a valid Opus stream, by design, so it decodes perfectly: a 4 KB fragment
+  # of a 548 KB recording passed both an ffprobe and a full ffmpeg decode.
+  #
+  # So watch it change instead. Two consecutive ticks at the same size means it
+  # has stopped growing. Costs one extra minute and is sync-agnostic.
+  size_now=$(stat -c %s "$audio")
+  size_file="$STATE/$stamp.size"
+  size_prev=$(cat "$size_file" 2>/dev/null || echo "")
+  if [ "$size_now" = "0" ] || [ "$size_now" != "$size_prev" ]; then
+    printf '%s' "$size_now" > "$size_file"
+    log "waiting: $stamp is still arriving (${size_now} bytes)"
     continue
   fi
 
@@ -74,6 +85,7 @@ for audio in "$NOTES/audio"/*.ogg "$NOTES/audio"/*.mp3 \
   if "$SELF/venv/bin/python" "$SELF/transcribe.py" "$audio" "$transcript" \
        >> "$LOG" 2>&1; then
     log "transcribe: done $stamp"
+    rm -f "$STATE/$stamp.size"
   else
     log "transcribe: FAILED $stamp"
     rm -f "$transcript.tmp"
