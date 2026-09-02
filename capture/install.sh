@@ -40,6 +40,15 @@ MODELDL
 fi
 
 # ---- phase 1: prerequisites ------------------------------------------------
+# A venv records an absolute interpreter path in every script it installs, so
+# it stops working the moment the project is moved or renamed. Check it runs
+# before trusting it, and rebuild it if not. Models are cached elsewhere, so
+# this costs a pip install rather than a download.
+if [ -d "$DIR/venv" ] && ! "$DIR/venv/bin/python" -c "pass" 2>/dev/null; then
+  echo "the existing venv points at a path that no longer exists, rebuilding"
+  rm -rf "$DIR/venv"
+fi
+
 python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install -q --upgrade pip
 "$DIR/venv/bin/pip" install -q faster-whisper numpy PyQt6
