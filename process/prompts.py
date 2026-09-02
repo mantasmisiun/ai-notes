@@ -12,12 +12,13 @@ LANG_NAMES_LT = {"en": "anglų", "lt": "lietuvių"}
 
 PROMPTS = {
     "en": {
-        "section": """You are given part of a university lecture transcript in {src}.
+        "section": """You are given part of a transcript of {context}, in {src}.
 It came from speech recognition, so expect disfluencies and occasional wrong
 words.
 
-Write a factual summary of what is actually taught in this part. Cover the
-concepts introduced, any definitions given, and the reasoning or examples used.
+Write a factual summary of what actually happens in this part. Cover the
+substance: what is explained, claimed, decided or asked, and the reasoning
+or examples used. Match the material rather than assuming a lecture.
 Do not invent structure that is not there. Do not add an introduction or a
 conclusion. If a passage is too garbled to interpret, ignore it rather than
 guessing.
@@ -25,8 +26,7 @@ guessing.
 TRANSCRIPT PART:
 {chunk}""",
 
-        "combine": """Below are sequential summaries of one university lecture, transcribed
-from {src}.
+        "combine": """Below are sequential summaries of {context}, transcribed from {src}.
 
 Write a single study note in English, in markdown, with these sections and
 nothing else:
@@ -62,7 +62,7 @@ STUDENT'S OWN NOTES:
 """,
         "notes_heading": "Your notes",
 
-        "topic": """Below is a summary of one university lecture.
+        "topic": """Below is a summary of {context}.
 
 Reply with a short title for it: three to seven words, naming the specific
 subject matter. No quotes, no punctuation at the end, no prefix such as
@@ -72,7 +72,7 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
     },
 
     "lt": {
-        "section": """Pateikta universiteto paskaitos transkripcijos dalis {src_lt} kalba.
+        "section": """Pateikta {context} transkripcijos dalis {src_lt} kalba.
 Ji gauta iš kalbos atpažinimo sistemos, todėl pasitaiko nesklandumų ir
 klaidingai atpažintų žodžių.
 
@@ -84,8 +84,8 @@ per daug iškraipyta, kad ją būtų galima suprasti, praleisk ją, o ne spėk.
 TRANSKRIPCIJOS DALIS:
 {chunk}""",
 
-        "combine": """Žemiau iš eilės pateiktos vienos universiteto paskaitos dalių
-santraukos. Paskaita transkribuota iš {src_lt} kalbos.
+        "combine": """Žemiau iš eilės pateiktos {context} dalių santraukos.
+Įrašas transkribuotas iš {src_lt} kalbos.
 
 Parašyk vieną mokymosi konspektą lietuvių kalba, markdown formatu, su šiais
 skyriais ir nieko daugiau:
@@ -121,7 +121,7 @@ STUDENTO PASTABOS:
 """,
         "notes_heading": "Jūsų pastabos",
 
-        "topic": """Žemiau pateikta vienos universiteto paskaitos santrauka.
+        "topic": """Žemiau pateikta {context} santrauka.
 
 Atsakyk trumpu pavadinimu: nuo trijų iki septynių žodžių, įvardijančių konkrečią
 temą. Be kabučių, be skyrybos ženklo pabaigoje, be priešdėlio „Paskaita apie".
@@ -132,12 +132,30 @@ Atsakyk tik pavadinimu ir nieko daugiau.
 }
 
 
-def get(note_lang, src_lang):
+def describe(area="", subject="", kind="", lang="en"):
+    """A phrase naming what this recording actually is, so the model does not
+    treat a job interview or a game review as a university lecture."""
+    if lang == "lt":
+        if kind and subject:
+            return f"įrašo: {kind} tema „{subject}“"
+        if subject:
+            return f"įrašo tema „{subject}“"
+        return "įrašo"
+    if kind and subject:
+        art = "an" if kind[:1].lower() in "aeiou" else "a"
+        return f"{art} {kind.lower()} session on {subject}" + (f", in {area}" if area else "")
+    if subject:
+        return f"a session on {subject}" + (f", in {area}" if area else "")
+    return "a recorded session"
+
+
+def get(note_lang, src_lang, context="a recorded session"):
     """Prompt set for the note language, with the transcript language filled in.
     Falls back to English for any language without a translated set."""
     p = PROMPTS.get(note_lang, PROMPTS["en"])
     return {
-        k: v.replace("{src_lt}", LANG_NAMES_LT.get(src_lang, src_lang))
+        k: v.replace("{context}", context)
+            .replace("{src_lt}", LANG_NAMES_LT.get(src_lang, src_lang))
             .replace("{src}", LANG_NAMES.get(src_lang, src_lang))
         for k, v in p.items()
     }

@@ -100,33 +100,6 @@ def safe(name):
     return re.sub(r"\s+", " ", name)[:70]
 
 
-P = prompts.get(NOTELANG, SRCLANG)
-
-when = timetable.parse_stamp(stamp)
-m    = timetable.match(timetable.load(UNI), when)
-lectures_dir = os.path.join(UNI, m["module_folder"], "Sessions") if m else None
-own = collect_notes(stamp, lectures_dir)
-if own:
-    print(f"  found {len(own.split())} words of your own notes", flush=True)
-
-text  = body_of(transcript)
-parts = chunks(text, WORDS)
-print(f"{len(text.split())} words in {len(parts)} chunk(s)", flush=True)
-
-summaries = []
-for i, c in enumerate(parts, 1):
-    print(f"  section {i}/{len(parts)}", flush=True)
-    summaries.append(ask(P["section"].format(chunk=c)))
-
-print("  combining", flush=True)
-combine = P["combine"]
-if own:
-    combine = P["notes_intro"].format(notes=own) + combine
-note = unfence(ask(combine.format(sections="\n\n---\n\n".join(summaries))))
-
-print("  titling", flush=True)
-topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).splitlines()[0])
-
 # Where does it belong? Decided here, at summarise time, so a timetable you
 # corrected after recording still routes the note correctly.
 SESSIONS = "Sessions"
@@ -157,6 +130,15 @@ def resolve_schedule(link):
             return root
     return None
 
+when = timetable.parse_stamp(stamp)
+m    = timetable.match(timetable.load(UNI), when)
+lectures_dir = os.path.join(UNI, m["module_folder"], "Sessions") if m else None
+own = collect_notes(stamp, lectures_dir)
+if own:
+    print(f"  found {len(own.split())} words of your own notes", flush=True)
+
+# What this recording is has to be known before the prompts are built, so a
+# review or an interview is not summarised as though it were a lecture.
 raw_path = os.path.join(NOTES, "raw notes", f"{stamp}.md")
 table = rawnote.parse(raw_path) if os.path.exists(raw_path) else {}
 area, subject = table.get("Area", "").strip(), table.get("Subject", "").strip()
@@ -164,19 +146,45 @@ kind = table.get("Type", "").strip() or (m["kind"] if m else "")
 
 subject_dir = resolve_schedule(table.get("Schedule", ""))
 if subject_dir:
-    dest_dir = os.path.join(subject_dir, SESSIONS)
     rel = os.path.relpath(subject_dir, VAULT).split(os.sep)
     area    = area or (rel[0] if len(rel) > 1 else "")
     subject = subject or rel[-1]
-    fname   = f"{stamp} {kind} - {topic}.md" if kind and topic else \
-              (f"{stamp} - {topic}.md" if topic else f"{stamp}.md")
+
+context = prompts.describe(area, subject, kind, NOTELANG)
+print(f"  treating this as {context}", flush=True)
+P = prompts.get(NOTELANG, SRCLANG, context)
+
+text  = body_of(transcript)
+parts = chunks(text, WORDS)
+print(f"{len(text.split())} words in {len(parts)} chunk(s)", flush=True)
+
+summaries = []
+for i, c in enumerate(parts, 1):
+    print(f"  section {i}/{len(parts)}", flush=True)
+    summaries.append(ask(P["section"].format(chunk=c)))
+
+print("  combining", flush=True)
+combine = P["combine"]
+if own:
+    combine = P["notes_intro"].format(notes=own) + combine
+note = unfence(ask(combine.format(sections="\n\n---\n\n".join(summaries))))
+
+print("  titling", flush=True)
+topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).splitlines()[0])
+
+if subject_dir:
+    dest_dir = os.path.join(subject_dir, SESSIONS)
 elif area and subject:
     dest_dir = os.path.join(VAULT, area, subject, SESSIONS)
-    fname    = f"{stamp} {kind} - {topic}.md" if kind and topic else \
-               (f"{stamp} - {topic}.md" if topic else f"{stamp}.md")
 else:
     dest_dir = os.path.join(NOTES, "unfiled")
-    fname    = f"{stamp} - {topic}.md" if topic else f"{stamp}.md"
+
+if kind and topic:
+    fname = f"{stamp} {kind} - {topic}.md"
+elif topic:
+    fname = f"{stamp} - {topic}.md"
+else:
+    fname = f"{stamp}.md"
 
 os.makedirs(dest_dir, exist_ok=True)
 out = os.path.join(dest_dir, fname)
