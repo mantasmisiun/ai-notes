@@ -28,12 +28,27 @@ WhisperModel(sys.argv[1], device="cuda", compute_type=sys.argv[2])
 print(f"{sys.argv[1]} ready on GPU")
 PY
 
+# Never inherit OLLAMA_HOST. It is commonly set in a shell profile to point at
+# another machine, and the pipeline must talk to the local daemon it just
+# checked for. summarise.py does the same for the same reason.
+export OLLAMA_HOST="${LECTURE_OLLAMA_HOST:-127.0.0.1:11434}"
+
 llm="${LECTURE_LLM:-llama3.1:8b}"
 echo "pulling the summariser: $llm"
+
+if ! curl -fsS --max-time 5 "http://$OLLAMA_HOST/api/version" >/dev/null 2>&1; then
+  echo >&2
+  echo "Cannot reach Ollama at $OLLAMA_HOST." >&2
+  echo "Start it with:  sudo systemctl start ollama" >&2
+  echo "or set LECTURE_OLLAMA_HOST if it runs somewhere else." >&2
+  exit 1
+fi
+
 if ! ollama pull "$llm"; then
   echo >&2
-  echo "Could not pull '$llm'. Model names move; check ollama.com/library" >&2
-  echo "and re-run the installer, choosing Other to enter a tag yourself." >&2
+  echo "Ollama is running but '$llm' could not be pulled, so the tag is likely" >&2
+  echo "wrong. Model names move; check ollama.com/library and re-run the" >&2
+  echo "installer, choosing Other to enter a tag yourself." >&2
   exit 1
 fi
 
