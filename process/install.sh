@@ -18,14 +18,24 @@ python3 -m venv "$DIR/venv"
 # does not provide them.
 "$DIR/venv/bin/pip" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12
 
-echo "fetching the accurate model, about 3 GB"
-"$DIR/venv/bin/python" - <<'PY'
+asr="${LECTURE_ASR_MODEL:-large-v3}"
+prec="${LECTURE_ASR_COMPUTE:-float16}"
+echo "fetching the accurate model: $asr ($prec)"
+"$DIR/venv/bin/python" - "$asr" "$prec" <<'PY'
+import sys
 from faster_whisper import WhisperModel
-WhisperModel("large-v3", device="cuda", compute_type="float16")
-print("model ready on GPU")
+WhisperModel(sys.argv[1], device="cuda", compute_type=sys.argv[2])
+print(f"{sys.argv[1]} ready on GPU")
 PY
 
-ollama pull "${LECTURE_LLM:-llama3.1:8b}"
+llm="${LECTURE_LLM:-llama3.1:8b}"
+echo "pulling the summariser: $llm"
+if ! ollama pull "$llm"; then
+  echo >&2
+  echo "Could not pull '$llm'. Model names move; check ollama.com/library" >&2
+  echo "and re-run the installer, choosing Other to enter a tag yourself." >&2
+  exit 1
+fi
 
 mkdir -p "$HOME/.config/systemd/user" "$HOME/.local/state/lecture-notes"
 sed "s|^ExecStart=.*|ExecStart=$DIR/run.sh|" "$ROOT/systemd/lecture-notes.service" \
