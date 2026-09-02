@@ -1,5 +1,15 @@
+# written by install.sh, machine specific
 config.sh
+
+# created by the component installers
 venv/
+capture/whisper.cpp/
+capture/timetable.py
+process/timetable.py
+
+# benchmark scratch
+.bench/
+
 __pycache__/
 *.pyc
 *.log
