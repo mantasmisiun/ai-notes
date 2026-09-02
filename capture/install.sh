@@ -11,6 +11,7 @@ ROOT="$(dirname "$DIR")"
 source "$ROOT/config.sh"
 
 ln -sf ../shared/timetable.py "$DIR/timetable.py"
+ps_python() { [ -x "$DIR/venv/bin/python" ] && echo "$DIR/venv/bin/python" || echo python3; }
 PHASE="${1:---prereqs}"
 
 if [ "$PHASE" = "--models" ]; then
@@ -29,7 +30,7 @@ MODELDL
   fi
 
   mkdir -p "$HOME/.local/share/applications"
-  sed "s|^Exec=.*|Exec=$DIR/toggle.sh|" "$DIR/lecture-transcribe.desktop" \
+  sed "s|^Exec=.*|Exec=$(ps_python) $DIR/record.py|" "$DIR/lecture-transcribe.desktop" \
     > "$HOME/.local/share/applications/lecture-transcribe.desktop"
   update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
   mkdir -p "$VAULT/$TRANSCRIPTIONS_DIR"/{live,transcripts,audio,unfiled} "$AUDIO_SCRATCH"

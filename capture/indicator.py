@@ -2,11 +2,14 @@
 """Blinking tray icon while a lecture is being recorded.
 Left click stops the recording by calling the same toggle script."""
 import os, sys, time, subprocess
+from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from PyQt6.QtGui import QIcon, QPixmap, QPainter, QColor, QAction
 from PyQt6.QtCore import QTimer, Qt
 
-TOGGLE = os.path.expanduser("~/.local/share/lecture-transcribe/toggle.sh")
+# Resolve a sibling rather than a hardcoded home path: the project can be
+# cloned anywhere, and was in fact moved and renamed.
+TOGGLE = str(Path(__file__).resolve().parent / "record.py")
 started = time.time()
 
 
@@ -31,11 +34,11 @@ tray.setToolTip("Lecture recording")
 
 menu = QMenu()
 stop = QAction("Stop recording")
-stop.triggered.connect(lambda: subprocess.Popen([TOGGLE]))
+stop.triggered.connect(lambda: subprocess.Popen([sys.executable, TOGGLE]))
 menu.addAction(stop)
 tray.setContextMenu(menu)
 tray.activated.connect(
-    lambda reason: subprocess.Popen([TOGGLE])
+    lambda reason: subprocess.Popen([sys.executable, TOGGLE])
     if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
 tray.show()
 
