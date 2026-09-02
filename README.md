@@ -31,16 +31,28 @@ LAPTOP                              DESKTOP (RTX 3080)
 
 Files move between them through whatever already syncs the vault.
 
-## Measured on the hardware it was built for
+## Measured, not assumed
 
-| | |
-|---|---|
-| Live transcription | `small.en` on a Ryzen 7 4700U, roughly real time |
-| Accurate transcription | `large-v3` on an RTX 3080, **27x real time**, so 95 minutes of audio in 3m28s |
-| Summarisation | 10,000 words in **31 seconds**, five chunks plus a combine pass |
-| Storage | 90 minutes as Opus at 24 kbps is about 16 MB, against 170 MB as WAV |
+The installer benchmarks the machine it is running on rather than guessing.
+These are its numbers on the two machines this was built for, as multiples of
+real time:
 
-A full day of four lectures is processed in under twenty minutes.
+| | Ryzen 7 4700U, Vega iGPU | RTX 3080 |
+|---|---|---|
+| English, small | 8.7x CPU / 6.4x Vulkan | |
+| English, medium | 2.7x CPU / 2.9x Vulkan | |
+| Lithuanian, small | 3.6x CPU / 4.3x Vulkan | |
+| Lithuanian, medium | 1.7x CPU / 1.6x Vulkan | |
+| English, large-v3, batch | | 27x |
+| Summarising 10,000 words | | 31 s |
+
+A full day of four 90 minute lectures is processed in under twenty minutes.
+
+Two things those numbers taught us that guessing had got wrong. Lithuanian
+costs roughly 2.4x more compute than English at the same model size, so a
+machine benchmarked in English can fail in Lithuanian. And Vulkan on an
+integrated GPU did not beat the CPU on any combination measured here, despite
+being the obvious candidate.
 
 ## Design decisions
 
@@ -115,6 +127,26 @@ University/<MODULE>/
     2026-10-09 1645 Theory - Discounted cash flow.md
 ```
 
+## Your own notes
+
+Recording creates two files: the live transcript, which the pipeline writes,
+and a notes file, which only you write. They cross-link, so both open side by
+side in Obsidian.
+
+They are separate files rather than two halves of one because the transcript is
+appended to every twelve seconds. A single Obsidian buffer holding both your
+typing and those appends loses one of them on save.
+
+What you write is used twice. It goes into the summarising prompt with an
+instruction to trust your notes over the transcript on terminology and
+emphasis, which is exactly where speech recognition fails. And it is copied
+verbatim into the final note, so your own thinking survives rather than being
+paraphrased away.
+
+Anything already filed for the same lecture in the module folder is picked up
+too, so notes written before the lecture count. The pipeline skips its own
+output, so it can never read its own summaries back in.
+
 ## Requirements
 
 Capture: Linux with PipeWire or PulseAudio, ffmpeg, Python 3.11+, systemd.
@@ -161,3 +193,8 @@ desktop has seen the recording.
 Summarisation is not deterministic unless temperature is zero. It is set to zero
 here so that a prompt change can be evaluated against the previous output rather
 than against a different sample.
+
+Capture is Linux only. The transcription and summarising stages are portable
+Python, but the wrapper around them uses systemd, flock, systemd-inhibit and
+PulseAudio capture, none of which exist on Windows. Porting means moving that
+wrapper into Python rather than translating it.

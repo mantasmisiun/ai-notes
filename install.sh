@@ -141,7 +141,11 @@ mkdir -p "$vault/$tr_dir"/{live,transcripts,audio,unfiled} "$scratch"
 "$ROOT/lib/example-module.sh" "$vault/$uni_dir"
 
 # ---- measure, rather than ask, which backend and live model to use ---------
-if [ "$want_capture" = 1 ]; then
+if [ "$want_capture" = 1 ] && [ "$models_only" = 1 ]; then
+  live="${LECTURE_MODEL:-}"
+  say "Keeping the measured live model: ${live:-none}"
+  say
+elif [ "$want_capture" = 1 ]; then
   build_vulkan=0
   if [ "$HAS_VULKAN" = 1 ]; then
     missing="$(vulkan_build_missing)"
