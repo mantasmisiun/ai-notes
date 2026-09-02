@@ -1,0 +1,6 @@
+[Unit]
+Description=Process lecture recordings into notes
+
+[Service]
+Type=oneshot
+ExecStart=%h/lecture-pipeline/process/run.sh

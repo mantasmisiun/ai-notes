@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+"""Answer 'which lecture is happening at this moment' from the module
+timetables that already exist in the vault.
+
+Dates are only written on the first row of a day and carry forward. Rows need
+at least four cells whose 2nd and 3rd parse as times; the three-column summary
+table at the top of each file is ignored, and trailing columns are tolerated.
+"""
+import os, re, sys, glob, datetime
+
+TIME = re.compile(r"^\d{1,2}:\d{2}$")
+DATE = re.compile(r"^\d{2}-\d{2}-\d{4}$")
+SLACK_MIN = 20          # allow starting the recording a little early or late
+
+
+def load(university_dir):
+    entries = []
+    pattern = os.path.join(university_dir, "*", "Timetable *.md")
+    for path in sorted(glob.glob(pattern)):
+        folder = os.path.basename(os.path.dirname(path))
+        code, _, name = folder.partition(" ")
+        current = None
+        for line in open(path, encoding="utf-8"):
+            if not line.lstrip().startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) < 4:
+                continue
+            date_s, start_s, end_s, kind = cells[:4]
+            if not (TIME.match(start_s) and TIME.match(end_s)):
+                continue
+            if DATE.match(date_s):
+                current = datetime.datetime.strptime(date_s, "%d-%m-%Y").date()
+            if current is None:
+                continue
+            entries.append({
+                "module_folder": folder, "code": code, "name": name,
+                "date": current, "kind": kind,
+                "start": datetime.datetime.strptime(start_s, "%H:%M").time(),
+                "end":   datetime.datetime.strptime(end_s, "%H:%M").time(),
+            })
+    return entries
+
+
+def match(entries, when):
+    slack = datetime.timedelta(minutes=SLACK_MIN)
+    for e in entries:
+        s = datetime.datetime.combine(e["date"], e["start"]) - slack
+        t = datetime.datetime.combine(e["date"], e["end"]) + slack
+        if s <= when <= t:
+            return e
+    return None
+
+
+def parse_stamp(text):
+    return datetime.datetime.strptime(text, "%Y-%m-%d %H%M")
+
+
+if __name__ == "__main__":
+    # --lookup <university dir> <"YYYY-MM-DD HHMM">
+    #   prints "FOLDER<TAB>CODE<TAB>TYPE", or nothing when unmatched
+    if sys.argv[1] == "--lookup":
+        m = match(load(sys.argv[2]), parse_stamp(sys.argv[3]))
+        if m:
+            print(f"{m['module_folder']}\t{m['code']}\t{m['kind']}")
+        sys.exit(0)
+
+    es = load(sys.argv[1])
+    print(f"{len(es)} rows across {len({e['module_folder'] for e in es})} modules")
+    for probe in sys.argv[2:]:
+        m = match(es, parse_stamp(probe))
+        print(f"{probe} -> " + (f"{m['code']} {m['name']} [{m['kind']}]"
+                                if m else "NO MATCH (unfiled)"))

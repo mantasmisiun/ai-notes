@@ -1,0 +1,6 @@
+config.sh
+venv/
+__pycache__/
+*.pyc
+*.log
+*.pid

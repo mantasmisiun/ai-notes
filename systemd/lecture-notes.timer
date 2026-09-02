@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for lecture recordings to process
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=1min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

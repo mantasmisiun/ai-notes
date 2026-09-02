@@ -1,0 +1,15 @@
+# Copy to config.sh and edit. Paths only, no secrets.
+# Both machines need their own copy: the vault lives in a different place on each.
+
+# Obsidian vault root
+VAULT="$HOME/Documents/Obsidian/My Vault"
+
+# Folder inside the vault holding pipeline state: live/, transcripts/, audio/, unfiled/
+TRANSCRIPTIONS_DIR="Transcriptions"
+
+# Folder inside the vault holding one directory per module, each with a timetable
+UNIVERSITY_DIR="University"
+
+# Scratch space for raw PCM while recording. Deliberately OUTSIDE the vault:
+# it is large, write-once, and has no business being synced.
+AUDIO_SCRATCH="$HOME/lecture-recordings"
