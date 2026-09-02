@@ -41,7 +41,7 @@ fi
 # ---- phase 1: prerequisites ------------------------------------------------
 python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install -q --upgrade pip
-"$DIR/venv/bin/pip" install -q faster-whisper numpy
+"$DIR/venv/bin/pip" install -q faster-whisper numpy PyQt6
 
 # whisper.cpp is built only when Vulkan is a candidate, so the benchmark has
 # something to measure. It is not selected unless it actually wins.

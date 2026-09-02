@@ -7,6 +7,8 @@ never the whole file.
 """
 import os, sys, signal, subprocess, datetime, threading
 
+from pathlib import Path
+
 import numpy as np
 from faster_whisper import WhisperModel
 
@@ -76,10 +78,20 @@ def main():
                          cpu_threads=THREADS)
     append("*ready, recording*\n\n")
 
-    src = os.environ.get("LECTURE_INPUT", "pulse:default").split(":", 1)
+    # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
+    # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
+    # avfoundation on macOS, a named DirectShow device on Windows.
+    if os.environ.get("LECTURE_INPUT"):
+        src = os.environ["LECTURE_INPUT"].split(":", 1)
+        source = ["-f", src[0], "-i", src[1]]
+    else:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+        import platform_support as ps
+        source = ps.default_input_device()
+
     ff = subprocess.Popen(
-        ["ffmpeg", "-loglevel", "error", "-f", src[0], "-i", src[1],
-         "-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
+        ["ffmpeg", "-loglevel", "error"] + source +
+        ["-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
         stdout=subprocess.PIPE)
 
     want = RATE * 2 * CHUNK_SECS
