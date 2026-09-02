@@ -33,4 +33,11 @@ fi
 
 # An NVIDIA card exposes Vulkan too, but CUDA is faster and better tested, so
 # the installer does not offer Vulkan there.
-[ "$GPU_VENDOR" = "nvidia" ] && HAS_VULKAN=0
+#
+# Written as an if rather than `[ ... ] && VAR=0`: that form returns 1 when the
+# test is false, and as the last command of a sourced file it aborts the caller
+# under `set -e`. It did, silently, on every non-NVIDIA machine.
+if [ "$GPU_VENDOR" = "nvidia" ]; then
+  HAS_VULKAN=0
+fi
+true
