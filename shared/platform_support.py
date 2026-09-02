@@ -141,6 +141,54 @@ def notify(title, body="", replace_id=None):
     return None
 
 
+# --- running on a schedule -------------------------------------------------
+
+def register_periodic(name, command, minutes=1):
+    """Run `command` every `minutes`. Returns a description of what it did, or
+    raises if the platform has no supported scheduler.
+
+    systemd on Linux, Task Scheduler on Windows, launchd on macOS. Each is
+    idempotent: registering twice replaces rather than duplicates.
+    """
+    if WINDOWS:
+        quoted = " ".join(f'"{c}"' for c in command)
+        subprocess.run(["schtasks", "/Create", "/F", "/TN", name,
+                        "/SC", "MINUTE", "/MO", str(minutes),
+                        "/TR", quoted], check=True, capture_output=True)
+        return f"scheduled task {name}, every {minutes} min"
+
+    if MACOS:
+        plist = Path.home() / "Library/LaunchAgents" / f"{name}.plist"
+        plist.parent.mkdir(parents=True, exist_ok=True)
+        args = "".join(f"        <string>{c}</string>\n" for c in command)
+        plist.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+            '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+            '<plist version="1.0"><dict>\n'
+            f'  <key>Label</key><string>{name}</string>\n'
+            f'  <key>ProgramArguments</key><array>\n{args}  </array>\n'
+            f'  <key>StartInterval</key><integer>{minutes * 60}</integer>\n'
+            '</dict></plist>\n')
+        subprocess.run(["launchctl", "unload", str(plist)], capture_output=True)
+        subprocess.run(["launchctl", "load", str(plist)], check=True, capture_output=True)
+        return f"launch agent {plist.name}, every {minutes} min"
+
+    unit = Path.home() / ".config/systemd/user"
+    unit.mkdir(parents=True, exist_ok=True)
+    exe = " ".join(command)
+    (unit / f"{name}.service").write_text(
+        f"[Unit]\nDescription={name}\n\n[Service]\nType=oneshot\nExecStart={exe}\n")
+    (unit / f"{name}.timer").write_text(
+        f"[Unit]\nDescription={name}\n\n[Timer]\nOnBootSec=3min\n"
+        f"OnUnitActiveSec={minutes}min\nAccuracySec=30s\n\n"
+        "[Install]\nWantedBy=timers.target\n")
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
+    subprocess.run(["systemctl", "--user", "enable", "--now", f"{name}.timer"],
+                   check=True, capture_output=True)
+    return f"systemd user timer {name}.timer, every {minutes} min"
+
+
 # --- single-instance lock ---------------------------------------------------
 
 class Lock:
