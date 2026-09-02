@@ -139,7 +139,15 @@ def resolve_schedule(link):
             return root
     return None
 
-when = timetable.parse_stamp(stamp)
+try:
+    when = timetable.parse_stamp(stamp)
+except ValueError:
+    # A file dropped into the audio folder by hand does not have a timestamp
+    # for a name. Fall back to when it was last written, so it still dates and
+    # files correctly instead of crashing after transcription has already run.
+    when = datetime.datetime.fromtimestamp(os.path.getmtime(transcript))
+    print(f"  '{stamp}' is not a timestamp; dating it from the file: {when:%Y-%m-%d %H:%M}",
+          flush=True)
 m    = timetable.match(timetable.load(UNI), when)
 lectures_dir = os.path.join(UNI, m["module_folder"], "Sessions") if m else None
 own = collect_notes(stamp, lectures_dir)
