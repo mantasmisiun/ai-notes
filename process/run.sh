@@ -15,6 +15,7 @@ UNI="$VAULT/$UNIVERSITY_DIR"
 
 MIN_FREE_MIB=7000        # room for whisper large-v3 or an 8B model
 KEEP_AUDIO_DAYS=7        # audio is the only irreplaceable artefact
+SETTLE_SECS=60           # let a file still arriving over sync finish landing
 
 mkdir -p "$STATE" "$NOTES"/{live,transcripts,audio,unfiled}
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
@@ -28,9 +29,13 @@ fi
 # If capture is installed on this same machine, never process during a
 # recording: the two would compete for the GPU and the live transcript is the
 # one with a person waiting on it.
-CAPTURE_PID="$SELF/../capture/run.pid"
-if [ -f "$CAPTURE_PID" ] && kill -0 "$(cat "$CAPTURE_PID")" 2>/dev/null; then
-  log "defer: a recording is in progress"
+#
+# record.py holds an flock for the life of a recording, so trying to take it is
+# the test. It replaced a PID file when capture was ported, and this check was
+# left looking for the old file, which meant it never fired.
+RECORD_LOCK="${XDG_STATE_HOME:-$HOME/.local/state}/lecture-pipeline/record.lock"
+if [ -e "$RECORD_LOCK" ] && ! flock -n "$RECORD_LOCK" -c true 2>/dev/null; then
+  log "defer: a recording is in progress on this machine"
   exit 0
 fi
 
@@ -56,6 +61,14 @@ for audio in "$NOTES/audio"/*.ogg "$NOTES/audio"/*.mp3 \
   stamp=$(basename "${audio%.*}")
   transcript="$NOTES/transcripts/$stamp.md"
   [ -f "$transcript" ] && continue
+
+  # Recording finished is signalled by the audio file existing at all: the
+  # worker writes it only when it stops. Across machines it also has to finish
+  # arriving, so anything touched in the last minute is left for the next tick.
+  if [ "$(( $(date +%s) - $(stat -c %Y "$audio") ))" -lt "$SETTLE_SECS" ]; then
+    log "waiting: $stamp is still arriving"
+    continue
+  fi
 
   log "transcribe: starting $stamp (${free} MiB free)"
   if "$SELF/venv/bin/python" "$SELF/transcribe.py" "$audio" "$transcript" \
