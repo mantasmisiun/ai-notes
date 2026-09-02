@@ -170,16 +170,26 @@ def stage_summarise(NOTES, VAULT, env):
             marker.unlink()
 
         log(f"summarise: starting {stamp}")
-        r = subprocess.run([venv_py(), str(HERE / "summarise.py"),
-                            str(transcript), stamp, str(VAULT)],
-                           env=env, capture_output=True, text=True)
-        out = ""
-        for line in (r.stdout or "").splitlines():
-            print(line, flush=True)
-            if line.startswith("NOTE_PATH="):
-                out = line[len("NOTE_PATH="):]
-        if r.returncode != 0 and r.stderr:
-            log(r.stderr.strip().splitlines()[-1])
+        # Stream rather than capture: summarising a long lecture takes minutes
+        # and per-chunk progress is the only sign it is alive.
+        out, tail = "", []
+        proc = subprocess.Popen([venv_py(), str(HERE / "summarise.py"),
+                                 str(transcript), stamp, str(VAULT)],
+                                env=env, text=True,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        with open(LOG, "a", encoding="utf-8") as lf:
+            for line in proc.stdout:
+                line = line.rstrip()
+                print(line, flush=True)
+                lf.write(line + "\n")
+                lf.flush()
+                tail = (tail + [line])[-5:]
+                if line.startswith("NOTE_PATH="):
+                    out = line[len("NOTE_PATH="):]
+        proc.wait()
+        if proc.returncode != 0 and tail:
+            log(tail[-1])
 
         if out and Path(out).exists():
             marker.write_text(out, encoding="utf-8")

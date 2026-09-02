@@ -5,7 +5,7 @@ Two passes over the transcript because a lecture is far longer than the model's
 context window, then a short third call for a topic to name the file with.
 Prints the path it wrote, which run.sh records as the completion marker.
 """
-import json, os, re, sys, urllib.request, datetime
+import json, os, re, sys, time, urllib.request, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "..", "shared"))
@@ -176,9 +176,15 @@ parts = chunks(text, WORDS)
 print(f"{len(text.split())} words in {len(parts)} chunk(s)", flush=True)
 
 summaries = []
+t_start = time.time()
 for i, c in enumerate(parts, 1):
-    print(f"  section {i}/{len(parts)}", flush=True)
+    t0 = time.time()
     summaries.append(ask(P["section"].format(chunk=c)))
+    el = time.time() - t0
+    done = time.time() - t_start
+    eta = done / i * (len(parts) - i)
+    print(f"  section {i}/{len(parts)}  {el:.0f}s"
+          + (f", about {eta/60:.0f} min left" if i < len(parts) else ""), flush=True)
 
 print("  combining", flush=True)
 combine = P["combine"]
