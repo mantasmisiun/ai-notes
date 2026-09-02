@@ -4,6 +4,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ROOT/lib/detect.sh"
+source "$ROOT/lib/deps.sh"
 
 CONF="$ROOT/config.sh"
 say() { printf '%s\n' "$*"; }
@@ -96,6 +97,24 @@ elif [ "$HAS_VULKAN" = 1 ]; then
 else
   say "Transcription will run on CPU."
   backend=cpu
+fi
+
+# Vulkan needs a build toolchain, not just the runtime. Check before asking
+# anything else, so a missing package is not discovered halfway through a build.
+if [ "$backend" = "vulkan" ]; then
+  missing="$(vulkan_build_missing)"
+  if [ -n "$missing" ]; then
+    say
+    say "Vulkan needs whisper.cpp compiled from source, and this machine is"
+    say "missing:"
+    for m in $missing; do say "  $m"; done
+    say
+    say "Install them, then run this installer again:"
+    say
+    say "  $(install_hint $missing)"
+    say
+    exit 1
+  fi
 fi
 say
 
