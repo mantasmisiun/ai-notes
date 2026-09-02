@@ -118,8 +118,12 @@ say
 if [ "$models_only" = 1 ]; then
   vault="$d_vault"; tr_dir="$d_tr"; uni_dir="$d_uni"; scratch="$d_scratch"
 else
-  say "Point this at the ROOT of your Obsidian vault, the folder containing .obsidian"
-  vault="$(ask "Vault path" "$d_vault")"; vault="${vault/#\~/$HOME}"
+  say "Point this at the ROOT of your Obsidian vault, the folder containing"
+  say ".obsidian. Everything else is created inside it automatically."
+  say
+  vault="$(ask "Obsidian vault" "$d_vault")"
+  vault="${vault/#\~/$HOME}"
+  vault="${vault%/}"                      # a trailing slash doubles every path
   if [ ! -d "$vault" ]; then
     [ "$(ask "$vault does not exist. Create it? (y/n)" "n")" = "y" ] || { say "stopping"; exit 1; }
     mkdir -p "$vault"
@@ -127,10 +131,9 @@ else
     say "warning: no .obsidian folder there, so that may not be a vault root."
     [ "$(ask "Continue anyway? (y/n)" "n")" = "y" ] || exit 1
   fi
-  tr_dir="$(ask "Folder for pipeline state, inside the vault" "$d_tr")"
-  uni_dir="$(ask "Folder holding one directory per module" "$d_uni")"
-  scratch="$(ask "Scratch space for raw audio, OUTSIDE the vault" "$d_scratch")"
-  scratch="${scratch/#\~/$HOME}"
+  tr_dir="Transcriptions"
+  uni_dir="University"
+  scratch="$DEFAULT_SCRATCH"
 fi
 say
 
@@ -232,15 +235,62 @@ if [ "$want_process" = 1 ]; then
 fi
 
 write_config
-say "wrote config.sh"
 
 [ "$want_capture" = 1 ] && { say; say "--- capture ---";    "$ROOT/capture/install.sh" --models; }
 [ "$want_process" = 1 ] && { say; say "--- processing ---"; "$ROOT/process/install.sh"; }
 
 say
-if [ "$want_capture" = 1 ] && [ "$want_process" = 1 ]; then
-  say "Both halves are on this machine. Processing refuses to start while a"
-  say "recording is in progress, so the two never compete for the GPU."; say
+say "================================================================"
+say
+
+if [ "$want_capture" = 1 ] && [ -n "$live" ]; then
+  case "$OS_NAME" in
+    Linux)
+      say "To record a lecture"
+      say
+      say "  Search your applications for 'Lecture transcription'. Right click it"
+      say "  and choose Pin to Task Manager to keep it on the panel."
+      say
+      say "  Tap once to start. A red dot blinks in the system tray for as long"
+      say "  as it is recording."
+      say
+      say "  Tap the launcher again, or click the red dot, to stop."
+      ;;
+    Darwin|MINGW*|MSYS*|CYGWIN*)
+      say "Capture is not yet supported on $OS_NAME."
+      say
+      say "The recording wrapper uses systemd, flock and PulseAudio capture,"
+      say "which have no equivalent here. Transcription and summarising are"
+      say "portable and do work; only the capture half is Linux-only."
+      ;;
+  esac
+  say
+  say "  Transcript and your notes appear in:"
+  say "    $tr_dir/live/"
+  say "  Type in the 'my notes' file, never in the transcript. It is appended"
+  say "  to every few seconds and your edits would be lost."
+  say
+  say "  Using $live on $backend."
+elif [ "$want_capture" = 1 ]; then
+  say "Recording audio only, with no live transcript, as chosen."
 fi
-say "Add this line to each of your real module timetables, once:"
+
+if [ "$want_process" = 1 ]; then
+  say
+  say "Processing runs by itself"
+  say
+  say "  A timer checks every minute and works through anything new. It defers"
+  say "  while you are gaming or recording, so it never competes for the GPU."
+  say
+  say "  Watch it with:   journalctl --user -fu lecture-notes"
+  say "  Or read:         ~/.local/state/lecture-notes/run.log"
+  say "  Stop it with:    systemctl --user stop lecture-notes.timer"
+fi
+
+say
+say "One manual step: add this line to each module timetable, once."
+say
 say "  ![[Lectures/_index]]"
+say
+say "Re-run this installer any time to try a different model. Choose"
+say "'Change models only' and nothing else is touched."

@@ -4,6 +4,14 @@
 #   GPU_NAME  GPU_VENDOR (nvidia|amd|intel|none)  VRAM_MIB  HAS_CUDA  HAS_VULKAN
 
 OS_NAME="$(uname -s)"
+
+# Scratch space for raw audio while recording. Per-platform, never asked about:
+# it is temporary, machine-local, and must not sit inside a synced vault.
+case "$OS_NAME" in
+  Darwin)               DEFAULT_SCRATCH="$HOME/Library/Caches/lecture-pipeline" ;;
+  MINGW*|MSYS*|CYGWIN*) DEFAULT_SCRATCH="${LOCALAPPDATA:-$HOME/AppData/Local}/lecture-pipeline" ;;
+  *)                    DEFAULT_SCRATCH="${XDG_CACHE_HOME:-$HOME/.cache}/lecture-pipeline" ;;
+esac
 CPU_NAME="$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1)"
 CPU_NAME="${CPU_NAME:-unknown}"
 CPU_THREADS="$(nproc 2>/dev/null || echo 1)"
