@@ -224,10 +224,18 @@ if [ "$want_process" = 1 ]; then
   say "  4) Other, enter an Ollama tag yourself"; say
   say "These can be changed later by re-running this installer and choosing"
   say "\"Change models only\"; nothing else is touched."; say
+  # Size on what is actually FREE, not the card's total. A desktop holds 1.5 to
+  # 2 GB before anything starts, and the KV cache for a 16k context adds around
+  # another gigabyte on a larger model. A 14B at Q4 needs roughly 9 GB of
+  # weights, so it does not fit a 10 GB card whatever the label says: Ollama
+  # spills layers to CPU and it crawls.
+  usable=$(( VRAM_MIB - 2000 - 1200 ))
+  say "  ${usable} MiB usable once the desktop and the context window are allowed for."
+  say
   dflt=1; [ "$note_lang" != "en" ] && dflt=2
   case "$(ask "Select" "$dflt")" in
     2) llm="gemma2:9b" ;;
-    3) llm=$([ "$VRAM_MIB" -ge 10000 ] && echo "qwen2.5:14b" || echo "qwen2.5:7b") ;;
+    3) if [ "$usable" -ge 9500 ]; then llm="qwen2.5:14b"; else llm="qwen2.5:7b"; fi ;;
     4) llm="$(ask "Ollama tag" "$d_llm")" ;;
     *) llm="llama3.1:8b" ;;
   esac
