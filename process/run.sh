@@ -96,6 +96,8 @@ for marker in "$STATE"/*.done; do
   note=$(cat "$marker")
   [ -f "$note" ] || continue
   for live in "$NOTES/live/$stamp"*.md; do
+    # your own notes are yours; only the machine-written transcript is retired
+    case "$live" in *" my notes.md") continue ;; esac
     if [ "$(stat -c %s "$note")" -gt 400 ]; then
       rm -f "$live"
       log "finalise: removed live note for $stamp"

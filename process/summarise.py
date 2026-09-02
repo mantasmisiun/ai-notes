@@ -57,12 +57,54 @@ def chunks(text, size):
     return [" ".join(w[i:i + size]) for i in range(0, len(w), size)]
 
 
+def own_notes_body(path):
+    """Everything the student wrote, which the template places after a lone
+    --- separator. Returns "" for an untouched template."""
+    t = open(path, encoding="utf-8").read()
+    t = re.sub(r"^---.*?---\n", "", t, flags=re.S)          # frontmatter
+    parts = re.split(r"^---\s*$", t, flags=re.M)
+    return parts[-1].strip() if len(parts) > 1 else t.strip()
+
+
+def collect_notes(stamp, lectures_dir):
+    """The student's own notes, from the file created alongside the recording
+    and from anything already filed for this lecture in the module folder."""
+    found = []
+    own = os.path.join(NOTES, "live", f"{stamp} my notes.md")
+    if os.path.exists(own):
+        body = own_notes_body(own)
+        if body:
+            found.append(body)
+
+    if lectures_dir and os.path.isdir(lectures_dir):
+        for f in sorted(os.listdir(lectures_dir)):
+            if not f.endswith(".md") or f == "_index.md":
+                continue
+            path = os.path.join(lectures_dir, f)
+            head = open(path, encoding="utf-8").read(2000)
+            if f'stamp: "{stamp}"' not in head:
+                continue
+            # never feed the pipeline its own output back to itself
+            if re.search(r"^type: lecture-(note|index)\s*$", head, re.M):
+                continue
+            found.append(own_notes_body(path))
+
+    return "\n\n".join(x for x in found if x).strip()
+
+
 def safe(name):
     name = re.sub(r"[\\/:*?\"<>|#^\[\]]", "", name).strip(" .")
     return re.sub(r"\s+", " ", name)[:70]
 
 
 P = prompts.get(NOTELANG, SRCLANG)
+
+when = timetable.parse_stamp(stamp)
+m    = timetable.match(timetable.load(UNI), when)
+lectures_dir = os.path.join(UNI, m["module_folder"], "Lectures") if m else None
+own = collect_notes(stamp, lectures_dir)
+if own:
+    print(f"  found {len(own.split())} words of your own notes", flush=True)
 
 text  = body_of(transcript)
 parts = chunks(text, WORDS)
@@ -74,16 +116,16 @@ for i, c in enumerate(parts, 1):
     summaries.append(ask(P["section"].format(chunk=c)))
 
 print("  combining", flush=True)
-note = unfence(ask(P["combine"].format(sections="\n\n---\n\n".join(summaries))))
+combine = P["combine"]
+if own:
+    combine = P["notes_intro"].format(notes=own) + combine
+note = unfence(ask(combine.format(sections="\n\n---\n\n".join(summaries))))
 
 print("  titling", flush=True)
 topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).splitlines()[0])
 
 # Where does it belong? Decided here, at summarise time, so a timetable you
 # corrected after recording still routes the note correctly.
-when = timetable.parse_stamp(stamp)
-m    = timetable.match(timetable.load(UNI), when)
-
 if m:
     dest_dir = os.path.join(UNI, m["module_folder"], "Lectures")
     fname    = f"{stamp} {m['kind']} - {topic}.md" if topic else f"{stamp} {m['kind']}.md"
@@ -114,6 +156,8 @@ with open(tmp, "w", encoding="utf-8") as f:
         f.write(f"session: {m['kind']}\n")
     f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n---\n\n")
     f.write(note.rstrip() + "\n\n---\n\n")
+    if own:
+        f.write(f"## {P['notes_heading']}\n\n{own}\n\n---\n\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")

@@ -51,6 +51,17 @@ meaning. Output raw markdown. Do not wrap your answer in a code fence.
 SECTION SUMMARIES:
 {sections}""",
 
+        "notes_intro": """The student also took their own notes during this lecture.
+Treat them as more reliable than the transcript: they show what the lecturer
+stressed, and they correct terms the speech recogniser will have garbled. Where
+the notes and the transcript disagree on a name or a term, follow the notes.
+
+STUDENT'S OWN NOTES:
+{notes}
+
+""",
+        "notes_heading": "Your notes",
+
         "topic": """Below is a summary of one university lecture.
 
 Reply with a short title for it: three to seven words, naming the specific
@@ -88,16 +99,27 @@ Kiekviena sąvoka su vienos eilutės paaiškinimu dėstytojo terminais.
 ## Turinys
 Esmė ta pačia tvarka, kuria buvo dėstoma, ištisiniu tekstu su paantraštėmis.
 
-## Neatsakyti klausimai
+## Atviri klausimai
 Kas liko neatsakyta arba paminėta kaip reikalaujantis papildomo skaitymo.
 Praleisk šį skyrių, jei tokių dalykų nebuvo.
 
 Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus,
 kurių vertimas prarastų prasmę, palik originalia forma. Rašyk gryną markdown.
-Neapvyniok atsakymo į kodo bloką.
+Neįtrauk atsakymo į kodo bloką.
 
 DALIŲ SANTRAUKOS:
 {sections}""",
+
+        "notes_intro": """Studentas per šią paskaitą taip pat pats užsirašė pastabų.
+Laikyk jas patikimesnėmis už transkripciją: jos rodo, ką dėstytojas pabrėžė, ir
+pataiso terminus, kuriuos kalbos atpažinimo sistema iškraipė. Kai pastabos ir
+transkripcija nesutaria dėl pavadinimo ar termino, remkis pastabomis.
+
+STUDENTO PASTABOS:
+{notes}
+
+""",
+        "notes_heading": "Jūsų pastabos",
 
         "topic": """Žemiau pateikta vienos universiteto paskaitos santrauka.
 
