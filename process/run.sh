@@ -75,7 +75,20 @@ for audio in "$NOTES/audio"/*.ogg "$NOTES/audio"/*.mp3 \
   size_now=$(stat -c %s "$audio")
   size_file="$STATE/$stamp.size"
   size_prev=$(cat "$size_file" 2>/dev/null || echo "")
-  if [ "$size_now" = "0" ] || [ "$size_now" != "$size_prev" ]; then
+  if [ "$size_now" = "0" ]; then
+    # An empty file is not arriving, it is stuck. Sync created the entry and
+    # never delivered the content. Say so once rather than every minute.
+    if [ ! -f "$size_file.stuck" ]; then
+      : > "$size_file.stuck"
+      log "STUCK: $stamp is 0 bytes here. Sync has not delivered the audio."
+      log "       Check it is not empty on the recording machine, and that the"
+      log "       vault is syncing binaries to this one."
+    fi
+    continue
+  fi
+  rm -f "$size_file.stuck"
+
+  if [ "$size_now" != "$size_prev" ]; then
     printf '%s' "$size_now" > "$size_file"
     log "waiting: $stamp is still arriving (${size_now} bytes)"
     continue
