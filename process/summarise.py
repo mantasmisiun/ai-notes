@@ -39,8 +39,22 @@ def ask(prompt, predict=None):
                        "stream": False, "options": opts}).encode()
     req = urllib.request.Request(f"http://{HOST}/api/generate", body,
                                  {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=900) as r:
-        return json.load(r)["response"].strip()
+    try:
+        with urllib.request.urlopen(req, timeout=900) as r:
+            return json.load(r)["response"].strip()
+    except TimeoutError:
+        # A single chunk taking over fifteen minutes means the model is not
+        # running on the GPU. Ollama does not fail when a model is too large,
+        # it splits it and runs the remainder on the CPU, which is perhaps ten
+        # times slower and looks like the summariser having hung.
+        raise SystemExit(
+            f"timed out after 15 minutes on one chunk with {MODEL}.\n"
+            f"That normally means it does not fit in VRAM and Ollama has put\n"
+            f"part of it on the CPU. Check with:\n"
+            f"  OLLAMA_HOST={HOST} ollama ps\n"
+            f"If PROCESSOR shows any CPU share, choose a smaller model by\n"
+            f"re-running the installer and picking 'Change models only'.\n"
+            f"Lowering LECTURE_NUMCTX in config.sh also frees VRAM.")
 
 
 def unfence(t):
