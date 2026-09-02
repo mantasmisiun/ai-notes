@@ -4,7 +4,7 @@ set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$DIR")"
 
-[ -f "$ROOT/config.sh" ] || { echo "copy config.sh.example to config.sh first" >&2; exit 1; }
+[ -f "$ROOT/config.sh" ] || { echo "run ../install.sh first, it writes config.sh" >&2; exit 1; }
 source "$ROOT/config.sh"
 
 command -v nvidia-smi >/dev/null || { echo "no nvidia-smi, this side needs a GPU" >&2; exit 1; }

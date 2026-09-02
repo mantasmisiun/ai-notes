@@ -127,13 +127,24 @@ Processing: an NVIDIA GPU with at least 8 GB, ffmpeg, Python 3.11+, Ollama.
 ```bash
 git clone https://github.com/<you>/lecture-pipeline.git ~/lecture-pipeline
 cd ~/lecture-pipeline
-cp config.sh.example config.sh    # edit the paths
-./capture/install.sh              # on the laptop
-./process/install.sh              # on the machine with the GPU
+./install.sh
 ```
 
-Each machine needs its own `config.sh`, since the vault is rarely at the same
-path on both. It is gitignored.
+It detects what the machine can do and offers only that. With a GPU of 6 GB or
+more you get a choice of the capture half, the processing half, or both. Without
+one, only capture is offered, since accurate transcription on CPU is slow enough
+that nobody would use it.
+
+It then asks for your vault root, writes `config.sh`, creates the folder tree,
+and leaves an `EXAMPLE001 Example Module` showing the timetable format to copy
+and then delete.
+
+Run it once per machine. Each keeps its own `config.sh`, which is gitignored,
+because the vault is rarely at the same path on both.
+
+**If you install both halves on one machine**, processing refuses to start while
+a recording is in progress. The live transcript has a person waiting on it, so it
+wins the GPU; batch work resumes on the next tick.
 
 ## Limitations
 

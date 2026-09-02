@@ -25,6 +25,15 @@ if ! flock -n 9; then
   exit 0
 fi
 
+# If capture is installed on this same machine, never process during a
+# recording: the two would compete for the GPU and the live transcript is the
+# one with a person waiting on it.
+CAPTURE_PID="$SELF/../capture/run.pid"
+if [ -f "$CAPTURE_PID" ] && kill -0 "$(cat "$CAPTURE_PID")" 2>/dev/null; then
+  log "defer: a recording is in progress"
+  exit 0
+fi
+
 read -r free util < <(nvidia-smi --query-gpu=memory.free,utilization.gpu \
   --format=csv,noheader,nounits | head -1 | tr -d ',')
 
