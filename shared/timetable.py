@@ -71,3 +71,59 @@ if __name__ == "__main__":
         m = match(es, parse_stamp(probe))
         print(f"{probe} -> " + (f"{m['code']} {m['name']} [{m['kind']}]"
                                 if m else "NO MATCH (unfiled)"))
+
+
+# --- writing -----------------------------------------------------------------
+# The pipeline only ever writes timetables it created itself. A hand-maintained
+# schedule is read and never touched, so a bug in row insertion cannot damage
+# the file you rely on to find everything.
+
+GENERATED_MARK = "generated: lecture-pipeline"
+
+
+def is_generated(path):
+    p = os.path.join(path)
+    if not os.path.exists(p):
+        return False
+    with open(p, encoding="utf-8") as f:
+        return GENERATED_MARK in f.read(400)
+
+
+def ensure_generated(module_dir, subject):
+    """Create a timetable for a tree the pipeline made. Returns its path, or
+    None when a hand-written one is already there."""
+    existing = glob.glob(os.path.join(module_dir, "Timetable *.md"))
+    if existing:
+        return existing[0] if is_generated(existing[0]) else None
+
+    path = os.path.join(module_dir, f"Timetable {subject}.md")
+    os.makedirs(module_dir, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("---\n" + GENERATED_MARK + "\n---\n\n")
+        f.write(f"# {subject}\n\nSessions are appended here as they are recorded.\n\n")
+        f.write("| Date | Start time | End time | Type | Session |\n")
+        f.write("| ---------- | ---------- | -------- | ---- | ------- |\n")
+        f.write("\n![[Lectures/_index]]\n")
+    return path
+
+
+def append_row(path, date_str, start, end, kind, session_link=""):
+    """Add one session. Idempotent: a row for the same date and start time is
+    left alone rather than duplicated."""
+    if not is_generated(path):
+        return False
+    with open(path, encoding="utf-8") as f:
+        lines = f.readlines()
+    for line in lines:
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) >= 3 and cells[0] == date_str and cells[1] == start:
+            return False
+
+    link = f"[[{session_link}]]" if session_link else ""
+    row = f"| {date_str} | {start} | {end} | {kind} | {link} |\n"
+    last = max((i for i, l in enumerate(lines) if l.lstrip().startswith("|")),
+               default=len(lines) - 1)
+    lines.insert(last + 1, row)
+    with open(path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    return True

@@ -8,8 +8,8 @@ never written; embed the index with  ![[Lectures/_index]]  once per module.
 import os, re, sys, glob
 
 VAULT = os.path.expanduser(sys.argv[1])
-UNI   = os.path.join(VAULT, "University")
-NOTES = os.path.join(VAULT, "Transcriptions")
+UNI   = os.path.join(VAULT, os.environ.get("UNIVERSITY_DIR", "University"))
+NOTES = os.path.join(VAULT, os.environ.get("TRANSCRIPTIONS_DIR", "Transcriptions"))
 
 FM = re.compile(r"^---\n(.*?)\n---", re.S)
 
@@ -38,7 +38,15 @@ def link(path):
 
 
 written = 0
-for lect_dir in sorted(glob.glob(os.path.join(UNI, "*", "Lectures"))):
+# Any Area/Subject/Lectures tree, not only the university one, so job
+# interviews and conferences are indexed the same way. Transcriptions is the
+# pipeline's own working area and is skipped.
+candidates = set(glob.glob(os.path.join(VAULT, "*", "*", "Lectures")))
+candidates |= set(glob.glob(os.path.join(UNI, "*", "Lectures")))
+candidates = {c for c in candidates
+              if os.path.basename(NOTES) not in os.path.relpath(c, VAULT).split(os.sep)}
+
+for lect_dir in sorted(candidates):
     rows = []
     for note in sorted(glob.glob(os.path.join(lect_dir, "*.md"))):
         if os.path.basename(note) == "_index.md":
@@ -56,12 +64,14 @@ for lect_dir in sorted(glob.glob(os.path.join(UNI, "*", "Lectures"))):
         au = first_existing(os.path.join(NOTES, "audio"), stamp,
                             [".ogg", ".mp3", ".m4a", ".wav"])
 
+        rawn = os.path.join(NOTES, "raw notes", stamp + ".md")
         rows.append((
             fm.get("date", stamp[:10]),
             fm.get("time", stamp[-4:-2] + ":" + stamp[-2:]),
             fm.get("session", ""),
             link(live),
             link(tr),
+            link(rawn if os.path.exists(rawn) else None),
             "[[" + os.path.relpath(note, VAULT)[:-3] + "]]",
             "yes" if au else "",
         ))
@@ -72,8 +82,8 @@ for lect_dir in sorted(glob.glob(os.path.join(UNI, "*", "Lectures"))):
         f.write("---\ntype: lecture-index\n"
                 "note: generated file, edits will be overwritten\n---\n\n")
         if rows:
-            f.write("| Date | Time | Type | Live | Transcript | Summary | Audio |\n")
-            f.write("| --- | --- | --- | --- | --- | --- | --- |\n")
+            f.write("| Date | Time | Type | Live | Transcript | Raw note | Summary | Audio |\n")
+            f.write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
             for r in sorted(rows):
                 f.write("| " + " | ".join(r) + " |\n")
         else:

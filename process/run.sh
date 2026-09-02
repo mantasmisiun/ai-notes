@@ -46,6 +46,7 @@ if [ "$free" -lt "$MIN_FREE_MIB" ]; then
 fi
 
 export LECTURE_LANGUAGE LECTURE_NOTE_LANGUAGE LECTURE_ASR_MODEL
+export TRANSCRIPTIONS_DIR UNIVERSITY_DIR
 
 shopt -s nullglob
 

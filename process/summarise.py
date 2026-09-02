@@ -7,15 +7,18 @@ Prints the path it wrote, which run.sh records as the completion marker.
 """
 import json, os, re, sys, urllib.request, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                               "..", "shared"))
 import timetable
 import prompts
+import rawnote
 
 transcript = sys.argv[1]
 stamp      = sys.argv[2]                       # "YYYY-MM-DD HHMM"
 VAULT      = os.path.expanduser(sys.argv[3])
 
-UNI    = os.path.join(VAULT, "University")
-NOTES  = os.path.join(VAULT, "Transcriptions")
+UNI    = os.path.join(VAULT, os.environ.get("UNIVERSITY_DIR", "University"))
+NOTES  = os.path.join(VAULT, os.environ.get("TRANSCRIPTIONS_DIR", "Transcriptions"))
 
 HOST   = os.environ.get("LECTURE_OLLAMA_HOST", "127.0.0.1:11434").replace("http://", "")
 MODEL  = os.environ.get("LECTURE_LLM", "llama3.1:8b")
@@ -70,9 +73,9 @@ def collect_notes(stamp, lectures_dir):
     """The student's own notes, from the file created alongside the recording
     and from anything already filed for this lecture in the module folder."""
     found = []
-    own = os.path.join(NOTES, "live", f"{stamp} my notes.md")
-    if os.path.exists(own):
-        body = own_notes_body(own)
+    raw = os.path.join(NOTES, "raw notes", f"{stamp}.md")
+    if os.path.exists(raw):
+        body = rawnote.body(raw)
         if body:
             found.append(body)
 
@@ -126,9 +129,16 @@ topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).split
 
 # Where does it belong? Decided here, at summarise time, so a timetable you
 # corrected after recording still routes the note correctly.
-if m:
-    dest_dir = os.path.join(UNI, m["module_folder"], "Lectures")
-    fname    = f"{stamp} {m['kind']} - {topic}.md" if topic else f"{stamp} {m['kind']}.md"
+LECTURES = "Lectures"
+raw_path = os.path.join(NOTES, "raw notes", f"{stamp}.md")
+table = rawnote.parse(raw_path) if os.path.exists(raw_path) else {}
+area, subject = table.get("Area", "").strip(), table.get("Subject", "").strip()
+kind = table.get("Type", "").strip() or (m["kind"] if m else "")
+
+if area and subject:
+    dest_dir = os.path.join(VAULT, area, subject, LECTURES)
+    fname    = f"{stamp} {kind} - {topic}.md" if kind and topic else \
+               (f"{stamp} - {topic}.md" if topic else f"{stamp}.md")
 else:
     dest_dir = os.path.join(NOTES, "unfiled")
     fname    = f"{stamp} - {topic}.md" if topic else f"{stamp}.md"
@@ -145,22 +155,61 @@ for ext in (".ogg", ".mp3", ".m4a", ".wav"):
         audio = os.path.relpath(p, VAULT)
         break
 
+raw_link = f"{os.path.basename(NOTES)}/raw notes/{stamp}"
+
 with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
     f.write(f'stamp: "{stamp}"\n')
     f.write(f"date: {when:%Y-%m-%d}\ntime: {when:%H:%M}\n")
     f.write("type: lecture-note\n")
+    if area:
+        f.write(f'area: "{area}"\n')
+    if subject:
+        f.write(f'subject: "{subject}"\n')
+    if kind:
+        f.write(f"session: {kind}\n")
     if m:
         f.write(f"module: {m['code']}\n")
-        f.write(f'module_name: "{m["name"]}"\n')
-        f.write(f"session: {m['kind']}\n")
     f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n---\n\n")
     f.write(note.rstrip() + "\n\n---\n\n")
     if own:
         f.write(f"## {P['notes_heading']}\n\n{own}\n\n---\n\n")
+    f.write(f"Raw note: [[{raw_link}]]\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")
 
 os.replace(tmp, out)
+
+# record the session in a timetable the pipeline owns. A hand-maintained
+# schedule is left alone: ensure_generated returns None for one it did not write.
+if area and subject:
+    try:
+        tt = timetable.ensure_generated(os.path.join(VAULT, area, subject), subject)
+        if tt:
+            start_s = table.get("Start", "").split()
+            end_s   = table.get("End", "").split()
+            timetable.append_row(
+                tt,
+                f"{when:%d-%m-%Y}",
+                start_s[1] if len(start_s) > 1 else f"{when:%H:%M}",
+                end_s[1] if len(end_s) > 1 else "",
+                kind,
+                os.path.relpath(out, VAULT)[:-3])
+    except Exception as e:
+        print(f"  could not update the timetable: {e}")
+
+# link the raw note back to the session it produced
+try:
+    if os.path.exists(raw_path):
+        rel_out = os.path.relpath(out, VAULT)[:-3]
+        text = open(raw_path, encoding="utf-8").read()
+        if rel_out not in text:
+            marker = "\n---\n"
+            i = text.index(marker)
+            text = text[:i] + f"\nSummary: [[{rel_out}]]\n" + text[i:]
+            open(raw_path, "w", encoding="utf-8").write(text)
+except Exception:
+    pass          # a missing backlink must not fail a completed summary
+
 print(f"NOTE_PATH={out}")
