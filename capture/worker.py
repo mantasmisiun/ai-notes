@@ -60,6 +60,19 @@ def finalise():
          "-f", "s16le", "-ar", str(RATE), "-ac", "1", "-i", raw_path,
          "-c:a", "libopus", "-b:a", BITRATE, ogg_path],
         capture_output=True)
+    # The recording length is known precisely here, so the End cell is filled
+    # in rather than left for you to type and mistype.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+        import rawnote
+        notes_root = Path(ogg_path).parent.parent
+        stamp_ = Path(ogg_path).stem
+        rn = notes_root / "raw notes" / f"{stamp_}.md"
+        if rn.exists():
+            rawnote.set_field(rn, "End", f"{datetime.datetime.now():%Y-%m-%d %H:%M}")
+    except Exception:
+        pass                       # never let bookkeeping lose a recording
+
     if r.returncode == 0 and os.path.exists(ogg_path):
         rel = os.path.relpath(ogg_path, vault)
         mb  = os.path.getsize(ogg_path) / 1e6

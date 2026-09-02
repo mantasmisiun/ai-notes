@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "shared"))
 sys.path.insert(0, str(HERE))
 
 import platform_support as ps
+import rawnote
 import timetable
 
 
@@ -63,18 +64,19 @@ def main():
     kind  = entry["kind"] if entry else ""
     label = f"{code} {kind}".strip() or "unscheduled"
 
-    for sub in ("live", "transcripts", "audio", "unfiled"):
+    for sub in ("live", "transcripts", "audio", "unfiled", "raw notes"):
         (NOTES / sub).mkdir(parents=True, exist_ok=True)
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
     note    = NOTES / "live" / (f"{stamp} {code} {kind}.md" if code else f"{stamp}.md")
-    mynotes = NOTES / "live" / f"{stamp} my notes.md"
+    mynotes = NOTES / "raw notes" / f"{stamp}.md"
     raw     = SCRATCH / f"{stamp}.pcm"
     ogg     = NOTES / "audio" / f"{stamp}.ogg"
 
     tr = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
     note_link    = f"{tr}/live/{note.stem}"
-    mynotes_link = f"{tr}/live/{mynotes.stem}"
+    mynotes_link = f"{tr}/raw notes/{mynotes.stem}"
+    audio_link   = f"{tr}/audio/{stamp}.ogg"
 
     front = [f'stamp: "{stamp}"', f"date: {datetime.now():%Y-%m-%d}",
              f"time: {datetime.now():%H:%M}", "type: lecture-live"]
@@ -89,17 +91,18 @@ def main():
         "> instead. They are picked up automatically when the summary is written.\n\n"
         f"# {stamp} {label}\n\n", encoding="utf-8")
 
+    # The raw note is yours and permanent. Area and Subject decide where the
+    # session is filed, prefilled from the timetable when it knows, blank when
+    # this is something the schedule has never heard of.
     if not mynotes.exists():
-        mf = [f'stamp: "{stamp}"', "type: lecture-my-notes"]
-        if code:
-            mf.append(f"module: {code}")
-        mynotes.write_text(
-            "---\n" + "\n".join(mf) + "\n---\n\n"
-            f"# Your notes, {stamp} {label}\n\n"
-            f"Live transcript: [[{note_link}]]\n\n"
-            "Anything you write below is read by the summariser and kept in the\n"
-            "final note. Use it for terms the transcript will mangle, and for what\n"
-            "the lecturer stressed.\n\n---\n\n", encoding="utf-8")
+        mynotes.write_text(rawnote.render(
+            stamp,
+            start=f"{datetime.now():%Y-%m-%d %H:%M}",
+            area=(cfg.get("UNIVERSITY_DIR", "University") if entry else ""),
+            subject=(entry["module_folder"] if entry else ""),
+            kind=kind,
+            transcript_link=note_link,
+            audio_link=audio_link), encoding="utf-8")
 
     env = dict(os.environ,
                LECTURE_MODEL=cfg.get("LECTURE_MODEL", "small.en"),
