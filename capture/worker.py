@@ -16,6 +16,7 @@ MODEL      = os.environ.get("LECTURE_MODEL", "small.en")
 COMPUTE    = os.environ.get("LECTURE_COMPUTE", "int8")
 THREADS    = int(os.environ.get("LECTURE_THREADS", "6"))
 BITRATE    = os.environ.get("LECTURE_BITRATE", "24k")
+LANGUAGE   = os.environ.get("LECTURE_LANGUAGE", "en")
 
 note_path = sys.argv[1]   # markdown note
 raw_path  = sys.argv[2]   # scratch .pcm, outside the vault
@@ -37,7 +38,7 @@ def append(text):
 def transcribe(model, raw):
     audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
     segments, _ = model.transcribe(
-        audio, language="en", vad_filter=True,
+        audio, language=LANGUAGE, vad_filter=True,
         vad_parameters=dict(min_silence_duration_ms=500),
         condition_on_previous_text=False)
     text = " ".join(s.text.strip() for s in segments).strip()

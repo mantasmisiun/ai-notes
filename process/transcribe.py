@@ -32,10 +32,11 @@ tmp   = out + ".tmp"
 MODEL   = os.environ.get("LECTURE_ASR_MODEL", "large-v3")
 COMPUTE = os.environ.get("LECTURE_ASR_COMPUTE", "float16")
 DEVICE  = os.environ.get("LECTURE_ASR_DEVICE", "cuda")
+LANGUAGE = os.environ.get("LECTURE_LANGUAGE", "en")
 
 model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
 segments, info = model.transcribe(
-    audio, language="en", vad_filter=True,
+    audio, language=LANGUAGE, vad_filter=True,
     vad_parameters=dict(min_silence_duration_ms=500),
     beam_size=5)
 

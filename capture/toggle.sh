@@ -69,6 +69,8 @@ ogg="$NOTES/audio/$stamp.ogg"
 
 # systemd-inhibit keeps the machine awake: a closed lid mid-lecture would
 # otherwise suspend the capture and end the recording.
+export LECTURE_LANGUAGE LECTURE_MODEL
+
 nohup systemd-inhibit \
   --what=sleep:idle:handle-lid-switch \
   --who="Lecture transcription" --why="Recording a lecture" \

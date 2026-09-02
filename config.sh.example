@@ -13,3 +13,12 @@ UNIVERSITY_DIR="University"
 # Scratch space for raw PCM while recording. Deliberately OUTSIDE the vault:
 # it is large, write-once, and has no business being synced.
 AUDIO_SCRATCH="$HOME/lecture-recordings"
+
+# Two-letter language code passed to both transcription stages.
+LECTURE_LANGUAGE="en"
+
+# Live model on the capture machine. Use small.en for English, small otherwise.
+LECTURE_MODEL="small.en"
+
+# Accurate model on the GPU machine. Multilingual, handles any language.
+LECTURE_ASR_MODEL="large-v3"

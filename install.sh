@@ -66,12 +66,35 @@ university=$(ask   "Folder holding one directory per module" "University")
 scratch=$(ask      "Scratch space for raw audio, OUTSIDE the vault" "$HOME/lecture-recordings")
 scratch="${scratch/#\~/$HOME}"
 
+# ---- language --------------------------------------------------------------
+say
+say "Lecture language as a two-letter code. English has dedicated models that are"
+say "both faster and more accurate; anything else uses the multilingual ones,"
+say "which are noticeably weaker at the small sizes used for the live view."
+lang=$(ask "Language" "en")
+
+if [ "$lang" = "en" ]; then
+  live_model="small.en"
+else
+  live_model="small"
+  say
+  say "Note: live transcription in '$lang' will be rough. The accurate pass on the"
+  say "GPU uses large-v3 and should be usable. Test both before relying on it."
+fi
+
 cat > "$ROOT/config.sh" <<CONF
 # Written by install.sh. Paths only, no secrets.
 VAULT="$vault"
 TRANSCRIPTIONS_DIR="$transcriptions"
 UNIVERSITY_DIR="$university"
 AUDIO_SCRATCH="$scratch"
+
+# Two-letter language code passed to both transcription stages.
+LECTURE_LANGUAGE="$lang"
+# Live model on the capture machine. The .en variants are English-only.
+LECTURE_MODEL="$live_model"
+# Accurate model on the GPU machine. Multilingual, handles any language.
+LECTURE_ASR_MODEL="large-v3"
 CONF
 say
 say "wrote config.sh"

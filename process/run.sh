@@ -45,6 +45,8 @@ if [ "$free" -lt "$MIN_FREE_MIB" ]; then
   exit 0
 fi
 
+export LECTURE_LANGUAGE LECTURE_ASR_MODEL
+
 shopt -s nullglob
 
 # ---- stage 1: transcribe ---------------------------------------------------
