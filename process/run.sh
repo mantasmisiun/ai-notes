@@ -110,7 +110,16 @@ done
 for transcript in "$NOTES/transcripts"/*.md; do
   stamp=$(basename "$transcript" .md)
   marker="$STATE/$stamp.done"
-  [ -f "$marker" ] && continue
+  # A marker claims a note was written. If that note has since been deleted the
+  # claim is false, so redo the work rather than skipping it forever. Delete the
+  # transcript too if you want a recording dropped for good.
+  if [ -f "$marker" ]; then
+    if [ -f "$(cat "$marker")" ]; then
+      continue
+    fi
+    log "note for $stamp is gone, re-summarising"
+    rm -f "$marker"
+  fi
 
   log "summarise: starting $stamp"
   out=$(LECTURE_OLLAMA_HOST=127.0.0.1:11434 \

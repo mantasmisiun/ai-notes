@@ -159,7 +159,15 @@ def stage_summarise(NOTES, VAULT, env):
         stamp  = transcript.stem
         marker = STATE / f"{stamp}.done"
         if marker.exists():
-            continue
+            # A marker claims a note was written. If that note has since been
+            # deleted the claim is false, and the work should be redone rather
+            # than skipped forever. Delete the transcript too if you want a
+            # recording dropped for good.
+            target = Path(marker.read_text().strip())
+            if target.exists():
+                continue
+            log(f"note for {stamp} is gone, re-summarising")
+            marker.unlink()
 
         log(f"summarise: starting {stamp}")
         r = subprocess.run([venv_py(), str(HERE / "summarise.py"),
