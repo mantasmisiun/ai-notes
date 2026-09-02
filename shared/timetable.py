@@ -35,6 +35,7 @@ def load(university_dir):
                 continue
             entries.append({
                 "module_folder": folder, "code": code, "name": name,
+                "path": path,
                 "date": current, "kind": kind,
                 "start": datetime.datetime.strptime(start_s, "%H:%M").time(),
                 "end":   datetime.datetime.strptime(end_s, "%H:%M").time(),
@@ -103,7 +104,7 @@ def ensure_generated(module_dir, subject):
         f.write(f"# {subject}\n\nSessions are appended here as they are recorded.\n\n")
         f.write("| Date | Start time | End time | Type | Session |\n")
         f.write("| ---------- | ---------- | -------- | ---- | ------- |\n")
-        f.write("\n![[Lectures/_index]]\n")
+        f.write("\n![[Sessions/_index]]\n")
     return path
 
 

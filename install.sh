@@ -290,7 +290,7 @@ fi
 say
 say "One manual step: add this line to each module timetable, once."
 say
-say "  ![[Lectures/_index]]"
+say "  ![[Sessions/_index]]"
 say
 say "Re-run this installer any time to try a different model. Choose"
 say "'Change models only' and nothing else is touched."

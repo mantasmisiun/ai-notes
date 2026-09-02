@@ -98,8 +98,8 @@ def main():
         mynotes.write_text(rawnote.render(
             stamp,
             start=f"{datetime.now():%Y-%m-%d %H:%M}",
-            area=(cfg.get("UNIVERSITY_DIR", "University") if entry else ""),
-            subject=(entry["module_folder"] if entry else ""),
+            schedule=(f'[[{Path(entry["path"]).stem}]]' if entry else ""),
+            area="", subject="",
             kind=kind,
             transcript_link=note_link,
             audio_link=audio_link), encoding="utf-8")

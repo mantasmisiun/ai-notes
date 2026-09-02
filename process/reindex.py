@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Rebuild every module's Lectures/_index.md from the notes present.
+"""Rebuild every module's Sessions/_index.md from the notes present.
 
 Owned entirely by the pipeline and regenerated from scratch each run, so it is
 idempotent and never accumulates duplicates. Your timetable notes are only read,
-never written; embed the index with  ![[Lectures/_index]]  once per module.
+never written; embed the index with  ![[Sessions/_index]]  once per module.
 """
 import os, re, sys, glob
 
@@ -38,11 +38,11 @@ def link(path):
 
 
 written = 0
-# Any Area/Subject/Lectures tree, not only the university one, so job
+# Any Area/Subject/Sessions tree, not only the university one, so job
 # interviews and conferences are indexed the same way. Transcriptions is the
 # pipeline's own working area and is skipped.
-candidates = set(glob.glob(os.path.join(VAULT, "*", "*", "Lectures")))
-candidates |= set(glob.glob(os.path.join(UNI, "*", "Lectures")))
+candidates = set(glob.glob(os.path.join(VAULT, "*", "*", "Sessions")))
+candidates |= set(glob.glob(os.path.join(UNI, "*", "Sessions")))
 candidates = {c for c in candidates
               if os.path.basename(NOTES) not in os.path.relpath(c, VAULT).split(os.sep)}
 

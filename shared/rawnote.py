@@ -9,14 +9,14 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-FIELDS = ["Area", "Subject", "Start", "End", "Type"]
+FIELDS = ["Schedule", "Area", "Subject", "Start", "End", "Type"]
 GENERATED_MARK = "generated: lecture-pipeline"
 
 
 def render(stamp, start, area="", subject="", kind="", end="",
-           transcript_link="", audio_link=""):
-    rows = {"Area": area, "Subject": subject, "Start": start,
-            "End": end, "Type": kind}
+           schedule="", transcript_link="", audio_link=""):
+    rows = {"Schedule": schedule, "Area": area, "Subject": subject,
+            "Start": start, "End": end, "Type": kind}
     table = "| Field | Value |\n| --- | --- |\n" + "".join(
         f"| {f} | {rows[f]} |\n" for f in FIELDS)
 
@@ -32,8 +32,9 @@ def render(stamp, start, area="", subject="", kind="", end="",
         "type: raw-note\n"
         "---\n\n"
         f"# {stamp}\n\n"
-        "Fill in Area and Subject and this session files itself. Leave them "
-        "blank and it waits in unfiled until you do.\n\n"
+        "Link a schedule and this session files itself next to it. For "
+        "something new, fill in Area and Subject instead and the folders "
+        "are created. Leave all three blank and it waits in unfiled.\n\n"
         f"{table}\n"
         f"{links}\n"
         "---\n\n")

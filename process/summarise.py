@@ -104,7 +104,7 @@ P = prompts.get(NOTELANG, SRCLANG)
 
 when = timetable.parse_stamp(stamp)
 m    = timetable.match(timetable.load(UNI), when)
-lectures_dir = os.path.join(UNI, m["module_folder"], "Lectures") if m else None
+lectures_dir = os.path.join(UNI, m["module_folder"], "Sessions") if m else None
 own = collect_notes(stamp, lectures_dir)
 if own:
     print(f"  found {len(own.split())} words of your own notes", flush=True)
@@ -129,14 +129,49 @@ topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).split
 
 # Where does it belong? Decided here, at summarise time, so a timetable you
 # corrected after recording still routes the note correctly.
-LECTURES = "Lectures"
+SESSIONS = "Sessions"
+
+
+def resolve_schedule(link):
+    """Where does a [[wikilink]] in the Schedule cell actually point?
+
+    Obsidian resolves a bare name against the whole vault, so this does the
+    same: try it as a path first, then search by filename. Returns the folder
+    holding that note, which is the subject folder.
+    """
+    if not link:
+        return None
+    mm = re.match(r"\[\[([^\]|#]+)", link.strip())
+    if not mm:
+        return None
+    target = mm.group(1).strip()
+
+    direct = os.path.join(VAULT, target + ".md")
+    if os.path.exists(direct):
+        return os.path.dirname(direct)
+
+    base = os.path.basename(target) + ".md"
+    for root, dirs, files in os.walk(VAULT):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        if base in files:
+            return root
+    return None
+
 raw_path = os.path.join(NOTES, "raw notes", f"{stamp}.md")
 table = rawnote.parse(raw_path) if os.path.exists(raw_path) else {}
 area, subject = table.get("Area", "").strip(), table.get("Subject", "").strip()
 kind = table.get("Type", "").strip() or (m["kind"] if m else "")
 
-if area and subject:
-    dest_dir = os.path.join(VAULT, area, subject, LECTURES)
+subject_dir = resolve_schedule(table.get("Schedule", ""))
+if subject_dir:
+    dest_dir = os.path.join(subject_dir, SESSIONS)
+    rel = os.path.relpath(subject_dir, VAULT).split(os.sep)
+    area    = area or (rel[0] if len(rel) > 1 else "")
+    subject = subject or rel[-1]
+    fname   = f"{stamp} {kind} - {topic}.md" if kind and topic else \
+              (f"{stamp} - {topic}.md" if topic else f"{stamp}.md")
+elif area and subject:
+    dest_dir = os.path.join(VAULT, area, subject, SESSIONS)
     fname    = f"{stamp} {kind} - {topic}.md" if kind and topic else \
                (f"{stamp} - {topic}.md" if topic else f"{stamp}.md")
 else:

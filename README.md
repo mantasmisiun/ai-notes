@@ -122,8 +122,8 @@ Transcriptions/
 
 University/<MODULE>/
   Timetable <MODULE>.md      yours, read only
-  Lectures/
-    _index.md                generated, embed it with ![[Lectures/_index]]
+  Sessions/
+    _index.md                generated, embed it with ![[Sessions/_index]]
     2026-10-09 1645 Theory - Discounted cash flow.md
 ```
 

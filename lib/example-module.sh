@@ -6,7 +6,7 @@ UNI="$1"
 DIR="$UNI/EXAMPLE001 Example Module"
 [ -d "$DIR" ] && exit 0
 
-mkdir -p "$DIR/Lectures"
+mkdir -p "$DIR/Sessions"
 cat > "$DIR/Timetable EXAMPLE001 Example Module.md" <<'TT'
 This module folder shows the layout the pipeline expects. Copy the shape for
 your real modules, then delete this one.
@@ -27,10 +27,10 @@ add your own without breaking anything.
 | 01-01-2000 | 09:00      | 10:30    | Theory   |
 |            | 10:45      | 12:15    | Practice |
 
-![[Lectures/_index]]
+![[Sessions/_index]]
 TT
 
-cat > "$DIR/Lectures/_index.md" <<'IX'
+cat > "$DIR/Sessions/_index.md" <<'IX'
 ---
 type: lecture-index
 note: generated file, edits will be overwritten
