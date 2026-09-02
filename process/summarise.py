@@ -22,7 +22,10 @@ NOTES  = os.path.join(VAULT, os.environ.get("TRANSCRIPTIONS_DIR", "Transcription
 
 HOST   = os.environ.get("LECTURE_OLLAMA_HOST", "127.0.0.1:11434").replace("http://", "")
 MODEL  = os.environ.get("LECTURE_LLM", "llama3.1:8b")
-NUMCTX = int(os.environ.get("LECTURE_NUMCTX", "8192"))
+# The combine pass now receives detailed notes rather than summaries, which
+# are several times longer. Too small a window silently truncates the input
+# and the note loses whole sections without saying so.
+NUMCTX = int(os.environ.get("LECTURE_NUMCTX", "16384"))
 WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "2500"))
 SRCLANG   = os.environ.get("LECTURE_LANGUAGE", "en")
 NOTELANG  = os.environ.get("LECTURE_NOTE_LANGUAGE", SRCLANG)
@@ -55,9 +58,15 @@ def body_of(path):
     return re.sub(r"\s+", " ", t).strip()
 
 
-def chunks(text, size):
+def chunks(text, size, overlap=200):
+    """Split into passes with a little overlap. Without it, a definition that
+    straddles a boundary is seen twice, each time with half its context."""
     w = text.split()
-    return [" ".join(w[i:i + size]) for i in range(0, len(w), size)]
+    out, i = [], 0
+    while i < len(w):
+        out.append(" ".join(w[i:i + size]))
+        i += max(1, size - overlap)
+    return out
 
 
 def own_notes_body(path):

@@ -16,29 +16,44 @@ PROMPTS = {
 It came from speech recognition, so expect disfluencies and occasional wrong
 words.
 
-Write a factual summary of what actually happens in this part. Cover the
-substance: what is explained, claimed, decided or asked, and the reasoning
-or examples used. Match the material rather than assuming a lecture.
-Do not invent structure that is not there. Do not add an introduction or a
-conclusion. If a passage is too garbled to interpret, ignore it rather than
-guessing.
+Write **detailed notes** on this part, not a summary. Someone who missed the
+session should be able to follow the substance from your notes alone.
+
+Keep: definitions in the words used, numbers, names, dates, formulas, worked
+examples with their steps, the reasoning behind claims, and anything flagged as
+important or examinable. Keep the order things were said in.
+
+Drop only: filler, repetition, digressions, and administrative chatter.
+
+Do not compress for brevity. Length should follow the material. If a passage is
+too garbled to interpret, ignore it rather than guessing. Do not add an
+introduction or a conclusion, and do not invent structure that is not there.
 
 TRANSCRIPT PART:
 {chunk}""",
 
-        "combine": """Below are sequential summaries of {context}, transcribed from {src}.
+        "combine": """Below are sequential detailed notes from one recording of
+{context}, transcribed from {src}. They are in order.
 
-Write a single study note in English, in markdown, with these sections and
-nothing else:
+**Your job is to organise them, not to shorten them.** Merge the parts into one
+coherent note, remove duplication where the same point appears twice across a
+boundary, and impose the structure below. Preserve the specifics: every
+definition, number, name, formula and worked example that appears in the input
+must appear in your output.
+
+A reader should not be able to tell the note was assembled from parts.
+
+Write in {out_lang}, in markdown, with these sections and nothing else:
 
 ## Summary
-Four to six sentences on what the lecture was about and where it ended up.
+Four to six sentences on what this was about and where it ended up.
 
 ## Key concepts
-Each concept with a one-line explanation in the lecturer's terms.
+Each concept with a one-line explanation in the speaker's own terms.
 
 ## Detail
-The substance, in the order it was taught, as prose with subheadings.
+The substance, in the order it was covered, as prose with subheadings. This is
+the body of the note and should carry almost everything from the input.
 
 ## Open questions
 Anything left unresolved, or flagged as needing further reading. Omit the
@@ -48,7 +63,7 @@ Base it only on what is below. Do not invent examples or citations. Keep
 technical terms in their original form where translating them would lose
 meaning. Output raw markdown. Do not wrap your answer in a code fence.
 
-SECTION SUMMARIES:
+DETAILED NOTES, IN ORDER:
 {sections}""",
 
         "notes_intro": """The student also took their own notes during this lecture.
@@ -76,19 +91,33 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
 Ji gauta iš kalbos atpažinimo sistemos, todėl pasitaiko nesklandumų ir
 klaidingai atpažintų žodžių.
 
-Parašyk dalykišką santrauką to, kas šioje dalyje iš tikrųjų dėstoma. Aprašyk
-pristatytas sąvokas, pateiktus apibrėžimus ir naudotus argumentus ar pavyzdžius.
-Nekurk struktūros, kurios nėra. Nerašyk įžangos ar išvadų. Jei kuri nors vieta
-per daug iškraipyta, kad ją būtų galima suprasti, praleisk ją, o ne spėk.
+Parašyk **išsamias pastabas** apie šią dalį, o ne santrauką. Žmogus, kuris
+nedalyvavo, turėtų iš tavo pastabų suprasti esmę.
+
+Palik: apibrėžimus tokius, kokie pasakyti, skaičius, pavadinimus, datas,
+formules, išspręstus pavyzdžius su žingsniais, argumentus ir viską, kas
+įvardyta kaip svarbu ar egzaminui. Išlaikyk pasakojimo eiliškumą.
+
+Išmesk tik: tuščiažodžiavimą, pasikartojimus, nukrypimus ir organizacinius
+dalykus.
+
+Netrumpink dėl trumpumo. Ilgis turi atitikti medžiagą. Jei kuri nors vieta per
+daug iškraipyta, praleisk ją, o ne spėk. Nerašyk įžangos ar išvadų.
 
 TRANSKRIPCIJOS DALIS:
 {chunk}""",
 
-        "combine": """Žemiau iš eilės pateiktos {context} dalių santraukos.
-Įrašas transkribuotas iš {src_lt} kalbos.
+        "combine": """Žemiau iš eilės pateiktos išsamios vieno {context} įrašo
+pastabos. Jos eina ta pačia tvarka. Įrašas transkribuotas iš {src_lt} kalbos.
 
-Parašyk vieną mokymosi konspektą lietuvių kalba, markdown formatu, su šiais
-skyriais ir nieko daugiau:
+**Tavo užduotis jas sutvarkyti, o ne sutrumpinti.** Sujunk dalis į vientisą
+konspektą, pašalink pasikartojimus ties dalių sandūromis ir suskirstyk pagal
+žemiau nurodytą struktūrą. Išlaikyk konkretybes: kiekvienas apibrėžimas,
+skaičius, pavadinimas, formulė ir išspręstas pavyzdys turi likti.
+
+Skaitytojas neturėtų pastebėti, kad konspektas sudėtas iš dalių.
+
+Rašyk lietuvių kalba, markdown formatu, su šiais skyriais ir nieko daugiau:
 
 ## Santrauka
 Keturi–šeši sakiniai apie tai, kas buvo dėstoma ir prie ko prieita.
@@ -98,6 +127,7 @@ Kiekviena sąvoka su vienos eilutės paaiškinimu dėstytojo terminais.
 
 ## Turinys
 Esmė ta pačia tvarka, kuria buvo dėstoma, ištisiniu tekstu su paantraštėmis.
+Tai yra konspekto pagrindas ir jame turi likti beveik viskas.
 
 ## Atviri klausimai
 Kas liko neatsakyta arba paminėta kaip reikalaujantis papildomo skaitymo.
@@ -107,7 +137,7 @@ Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus
 kurių vertimas prarastų prasmę, palik originalia forma. Rašyk gryną markdown.
 Neįtrauk atsakymo į kodo bloką.
 
-DALIŲ SANTRAUKOS:
+IŠSAMIOS PASTABOS IŠ EILĖS:
 {sections}""",
 
         "notes_intro": """Studentas per šią paskaitą taip pat pats užsirašė pastabų.
@@ -154,7 +184,8 @@ def get(note_lang, src_lang, context="a recorded session"):
     Falls back to English for any language without a translated set."""
     p = PROMPTS.get(note_lang, PROMPTS["en"])
     return {
-        k: v.replace("{context}", context)
+        k: v.replace("{out_lang}", LANG_NAMES.get(note_lang, note_lang))
+            .replace("{context}", context)
             .replace("{src_lt}", LANG_NAMES_LT.get(src_lang, src_lang))
             .replace("{src}", LANG_NAMES.get(src_lang, src_lang))
         for k, v in p.items()
