@@ -119,8 +119,10 @@ $lang = "en"
 if ((Ask "Select" "1") -eq "2") {
     $lang = "lt"
     Say ""
-    Say "  Note: Lithuanian on Windows uses the stock multilingual model."
-    Say "  The better Lithuanian model needs a conversion step that is Linux only."
+    Say "  Lithuanian uses a dedicated model, paprika-whisper-lt, which recognises"
+    Say "  Lithuanian word forms far better than the stock multilingual models."
+    Say "  Its output has no punctuation or capitalisation, which the summariser"
+    Say "  copes with but which makes the raw transcript harder to read."
 }
 
 # ---- vault -----------------------------------------------------------------
@@ -172,10 +174,30 @@ if ($parts.Count -ge 4) {
     if ($parts[0] -eq "nvidia") { $cuda = 1 }
 }
 
+# Lithuanian has one model worth using. No published CTranslate2 build exists,
+# so it is converted once into the cache with a throwaway toolchain that is
+# deleted afterwards. The venv-relative paths in fetch_lt_model.py cover
+# Windows, so this is the same step the Linux installer runs.
+$ltModel = ""
+if ($lang -eq "lt") {
+    Step "Preparing the Lithuanian model"
+    Say "  Converting paprika-whisper-lt. This happens once and takes a few minutes."
+    $ltOut = & python "$Root\lib\fetch_lt_model.py" "$env:LOCALAPPDATA\lecture-pipeline" 2>&1
+    $ltOut | ForEach-Object { Write-Host "  $_" }
+    $ltModel = ($ltOut | Select-Object -Last 1).ToString().Trim()
+    if (-not (Test-Path $ltModel)) {
+        Say ""
+        Say "Could not prepare the Lithuanian model. The last line above says why."
+        Read-Host "Press Enter to close"; exit 1
+    }
+    Say "  ready: $ltModel"
+}
+
 $env:HAS_CUDA = "$cuda"
 $env:GPU_DISCRETE = "$discrete"
 $env:VRAM_MIB = "$vram"
 $env:MIN_LIVE_FACTOR = "1.2"
+$env:LECTURE_FIXED_MODEL = "$ltModel"
 
 # Stream rather than capture. Collecting the output first means nothing
 # appears until the whole benchmark finishes, which on a slow machine with
@@ -189,10 +211,12 @@ $result = if ($resultLine) { "$resultLine" } else { "" }
 
 $liveModel = ""; $chunkSecs = 12
 if ($result) {
-    $rp = $result -split " "
+    $rp = $result -split "`t"
     if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2] }
     if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
 }
+# the config is parsed as KEY="value" with forward slashes; keep a path usable
+if ($liveModel -and (Test-Path $liveModel)) { $liveModel = $liveModel -replace '\\', '/' }
 
 if (-not $liveModel) {
     Say ""
@@ -214,6 +238,8 @@ if ($wantProcess -eq 1) {
 }
 
 # ---- config ----------------------------------------------------------------
+$asrModel = "large-v3"; $asrCompute = "float16"
+if ($ltModel) { $asrModel = ($ltModel -replace '\\', '/'); $asrCompute = "int8" }
 Step "Writing config.sh"
 @"
 # Written by windows/install.ps1. Paths and model choices, no secrets.
@@ -231,8 +257,8 @@ LECTURE_NOTE_LANGUAGE="$lang"
 
 LECTURE_MODEL="$liveModel"
 LECTURE_CHUNK_SECS="$chunkSecs"
-LECTURE_ASR_MODEL="large-v3"
-LECTURE_ASR_COMPUTE="float16"
+LECTURE_ASR_MODEL="$asrModel"
+LECTURE_ASR_COMPUTE="$asrCompute"
 LECTURE_LLM="qwen3:8b"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
 Say "  done"
