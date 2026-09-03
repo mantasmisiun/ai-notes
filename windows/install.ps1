@@ -316,8 +316,8 @@ LECTURE_LLM="qwen3:8b"
 
 # ---- vault layout and a shortcut -------------------------------------------
 Step "Preparing the vault and a shortcut"
-# generated folders under auto\, the user's raw notes beside them
-foreach ($d in @("auto\live", "auto\transcripts", "auto\audio", "auto\unfiled", "raw notes")) {
+# generated folders under auto\, the user's your notes beside them
+foreach ($d in @("auto\live", "auto\transcripts", "auto\audio", "auto\unfiled", "your notes")) {
     New-Item -ItemType Directory -Force "$vault\Transcriptions\$d" | Out-Null
 }
 New-Item -ItemType Directory -Force "$vault\University" | Out-Null
@@ -347,6 +347,6 @@ Say "Press Stop recording, or double-click the shortcut again."
 Say ""
 Say "While recording, two files appear:"
 Say "  $vault\Transcriptions\live         the live transcript, rewritten as it goes"
-Say "  $vault\Transcriptions\raw notes    yours: write here, fill in the table to file it"
+Say "  $vault\Transcriptions\your notes    yours: write here, fill in the table to file it"
 Say ""
 Read-Host "Press Enter to close"

@@ -119,7 +119,7 @@ def main():
 
     tr = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
     note_link    = layout.link(tr, "live", note.stem)
-    mynotes_link = layout.link(tr, "raw notes", mynotes.stem)
+    mynotes_link = layout.link(tr, layout.RAW, mynotes.stem)
     audio_link   = layout.link(tr, "audio", f"{stamp}.ogg")
 
     front = [f'stamp: "{stamp}"', f"date: {datetime.now():%Y-%m-%d}",
@@ -135,7 +135,7 @@ def main():
         "> instead. They are picked up automatically when the summary is written.\n\n"
         f"# {stamp} {label}\n\n", encoding="utf-8")
 
-    # The raw note is yours and permanent. Area and Subject decide where the
+    # The your note is yours and permanent. Area and Subject decide where the
     # session is filed, prefilled from the timetable when it knows, blank when
     # this is something the schedule has never heard of.
     if not mynotes.exists():

@@ -66,7 +66,7 @@ for lect_dir in sorted(candidates):
         au = first_existing(os.path.join(NOTES, "auto", "audio"), stamp,
                             [".ogg", ".mp3", ".m4a", ".wav"])
 
-        rawn = os.path.join(NOTES, "raw notes", stamp + ".md")
+        rawn = os.path.join(NOTES, "your notes", stamp + ".md")
         rows.append((
             fm.get("date", stamp[:10]),
             fm.get("time", stamp[-4:-2] + ":" + stamp[-2:]),
@@ -84,7 +84,7 @@ for lect_dir in sorted(candidates):
         f.write("---\ntype: lecture-index\n"
                 "note: generated file, edits will be overwritten\n---\n\n")
         if rows:
-            f.write("| Date | Time | Type | Live | Transcript | Raw note | Summary | Audio |\n")
+            f.write("| Date | Time | Type | Live | Transcript | Your notes | Summary | Audio |\n")
             f.write("| --- | --- | --- | --- | --- | --- | --- | --- |\n")
             for r in sorted(rows):
                 f.write("| " + " | ".join(r) + " |\n")

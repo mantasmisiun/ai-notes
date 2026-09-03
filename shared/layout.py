@@ -2,7 +2,7 @@
 """Where the pipeline's files live inside the vault, and the one rule about them.
 
     Transcriptions/
-      raw notes/       yours: edit freely
+      your notes/       yours: edit freely
       auto/            written by the pipeline; anything typed here is lost
         live/          rewritten while recording, deleted once the note exists
         transcripts/   generated once from the audio, kept
@@ -14,7 +14,7 @@ generated folder also carries an _about.md written from the live config, so
 the retention it states is never stale the way a number in a folder name is.
 
 Earlier versions kept the four generated folders directly under
-Transcriptions, beside raw notes, with nothing to say which were safe to edit.
+Transcriptions, beside your notes, with nothing to say which were safe to edit.
 migrate() moves such a vault to this layout and rewrites every link, so nobody
 moves anything by hand. It runs on both machines and is idempotent, so
 whichever side sees the old layout first does the work and the other finds
@@ -26,7 +26,8 @@ from pathlib import Path
 
 AUTO = "auto"
 GENERATED = ("live", "transcripts", "audio", "unfiled")
-RAW = "raw notes"
+RAW = "your notes"
+RAW_OLD = "raw notes"          # the folder's name before it was renamed
 ABOUT = "_about.md"
 
 
@@ -52,8 +53,11 @@ def link(tr_name, kind, name):
 
 
 def _patterns(tr_name):
-    return [(re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(k) + r"[/\\]"),
+    pats = [(re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(k) + r"[/\\]"),
              f"{tr_name}/{AUTO}/{k}/") for k in GENERATED]
+    pats.append((re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(RAW_OLD) + r"[/\\]"),
+                 f"{tr_name}/{RAW}/"))
+    return pats
 
 
 def _rewrite(text, pats):
@@ -67,11 +71,14 @@ def migrate(notes, vault, log=print):
     True when there was something to move."""
     notes, vault = Path(notes), Path(vault)
     old = [k for k in GENERATED if (notes / k).is_dir()]
+    if (notes / RAW_OLD).is_dir():
+        old.append(RAW_OLD)
     if not old:
         return False
     moved = 0
     for k in old:
-        src, dst = notes / k, auto_dir(notes, k)
+        src = notes / k
+        dst = raw_dir(notes) if k == RAW_OLD else auto_dir(notes, k)
         dst.mkdir(parents=True, exist_ok=True)
         for f in list(src.iterdir()):
             if f.is_dir():
