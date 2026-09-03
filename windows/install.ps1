@@ -66,17 +66,35 @@ if ($missing.Count -gt 0) {
 Say "  all present"
 
 # ---- what this machine will do ---------------------------------------------
-$hasNvidia = Have nvidia-smi
+# Ask the hardware, not the PATH. The presence of nvidia-smi is not evidence of
+# an NVIDIA card: it can be left behind by drivers or bundled by other software,
+# and on an Intel Arc laptop that made the installer claim a GPU it did not have.
+$gpus = @(Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
+          Select-Object -ExpandProperty Name)
+$nvidia = @($gpus | Where-Object { $_ -match "NVIDIA|GeForce|Quadro|RTX|GTX" })
+
+Step "Detected"
+if ($gpus.Count -eq 0) { Say "  GPU     none reported" }
+foreach ($g in $gpus) { Say "  GPU     $g" }
+
 $wantProcess = 0
-if ($hasNvidia) {
-    Step "This machine has an NVIDIA GPU"
+# Processing needs CUDA, so it needs both an NVIDIA card and a working driver.
+if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
+    Say ""
+    Say "That card can do the transcription and note writing as well."
+    Say ""
     Say "  1) Record only, another machine writes the notes"
     Say "  2) Both: record here and produce the notes here"
     Say ""
     if ((Ask "Select" "1") -eq "2") { $wantProcess = 1 }
+} elseif ($nvidia.Count -gt 0) {
+    Say ""
+    Say "  An NVIDIA card is present but nvidia-smi is not available, so the"
+    Say "  driver is missing or too old. Recording only."
 } else {
-    Step "No NVIDIA GPU found, so this machine records only"
-    Say "  Transcribing and summarising happen on a machine with one."
+    Say ""
+    Say "  No NVIDIA card, so this machine records only. Transcribing and"
+    Say "  summarising need CUDA and happen on a machine that has it."
 }
 
 # ---- language --------------------------------------------------------------
