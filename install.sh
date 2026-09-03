@@ -43,8 +43,9 @@ say "lecture-pipeline installer"; say
 say "Detected:"
 say "  CPU     $CPU_NAME, $CPU_THREADS threads"
 say "  GPU     ${GPU_NAME:-none}"
-if   [ "$HAS_CUDA"   = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, CUDA available"
-elif [ "$HAS_VULKAN" = 1 ]; then say "  VRAM    shared with system memory, Vulkan available"
+kind="integrated"; [ "$GPU_DISCRETE" = 1 ] && kind="discrete"
+if   [ "$HAS_CUDA"   = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, $kind, CUDA available"
+elif [ "$HAS_VULKAN" = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, $kind, Vulkan available"
 else say "  GPU acceleration unavailable, CPU only"; fi
 say
 
@@ -172,6 +173,7 @@ elif [ "$want_capture" = 1 ]; then
   wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
   bench_lang="$lang"; [ -f "$ROOT/samples/sample-$lang.ogg" ] || bench_lang=en
   out="$(HAS_CUDA=$HAS_CUDA MIN_LIVE_FACTOR=$MIN_LIVE_FACTOR \
+        GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
         "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
         "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
   result="$(printf '%s\n' "$out" | sed -n 's/^RESULT //p')"

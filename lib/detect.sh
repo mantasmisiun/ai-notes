@@ -16,22 +16,14 @@ CPU_NAME="$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | 
 CPU_NAME="${CPU_NAME:-unknown}"
 CPU_THREADS="$(nproc 2>/dev/null || echo 1)"
 
-GPU_NAME=""; GPU_VENDOR="none"; VRAM_MIB=0; HAS_CUDA=0; HAS_VULKAN=0
-
-if command -v nvidia-smi >/dev/null 2>&1 &&
-   nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
-  GPU_NAME="$(nvidia-smi --query-gpu=name --format=csv,noheader | head -1)"
-  VRAM_MIB="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits \
-              | tr -d ' ' | sort -n | tail -1)"
-  GPU_VENDOR="nvidia"; HAS_CUDA=1
-else
-  vga="$(lspci 2>/dev/null | grep -iE 'vga|3d controller' | head -1)"
-  case "${vga,,}" in
-    *amd*|*ati*|*radeon*) GPU_VENDOR="amd" ;;
-    *intel*)              GPU_VENDOR="intel" ;;
-  esac
-  GPU_NAME="$(printf '%s' "$vga" | sed 's/.*: //')"
-fi
+# One probe covers all three vendors. nvidia-smi is authoritative where it
+# exists; otherwise vulkaninfo is parsed, which is the only way to learn the
+# VRAM of an AMD or Intel card and whether it is discrete or integrated.
+IFS=$'\t' read -r GPU_VENDOR GPU_NAME VRAM_MIB GPU_DISCRETE < <(
+  python3 "$(dirname "${BASH_SOURCE[0]}")/../shared/gpu_probe.py" 2>/dev/null)
+GPU_VENDOR="${GPU_VENDOR:-none}"; GPU_NAME="${GPU_NAME:-}"
+VRAM_MIB="${VRAM_MIB:-0}"; GPU_DISCRETE="${GPU_DISCRETE:-0}"
+HAS_CUDA=0; [ "$GPU_VENDOR" = "nvidia" ] && HAS_CUDA=1
 
 if command -v vulkaninfo >/dev/null 2>&1 && vulkaninfo --summary >/dev/null 2>&1; then
   HAS_VULKAN=1

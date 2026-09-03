@@ -49,8 +49,14 @@ wcpp      = sys.argv[4] if len(sys.argv) > 4 else ""   # whisper.cpp build root,
 has_cuda  = os.environ.get("HAS_CUDA", "0") == "1"
 has_vulkan = bool(wcpp) and os.path.isfile(os.path.join(wcpp, "build/bin/whisper-cli"))
 
+# Two thresholds. GOOD_ENOUGH stops the search: the first model reaching it
+# is chosen and nothing smaller is downloaded. MIN_FACTOR is the floor for
+# accepting live transcription at all, used only if nothing reaches
+# GOOD_ENOUGH.
 MIN_FACTOR   = float(os.environ.get("MIN_LIVE_FACTOR", "1.2"))
-TRY_MEDIUM_AT = 2.5      # only fetch the 1.5 GB model if small suggests it may fit
+GOOD_ENOUGH  = float(os.environ.get("LECTURE_GOOD_ENOUGH", "2.0"))
+DISCRETE     = os.environ.get("GPU_DISCRETE", "0") == "1"
+VRAM_MIB     = int(os.environ.get("VRAM_MIB", "0") or 0)
 
 suffix = ".en" if lang == "en" else ""
 os.makedirs(work, exist_ok=True)
@@ -128,17 +134,23 @@ def candidates(model):
     return out
 
 
-results = []      # (model, backend, factor)
+results = []      # (model, backend, factor, words)
 print(f"Benchmark on {dur:.0f} s of {'English' if lang == 'en' else 'Lithuanian'} speech.")
 print("Fetching models first, so downloads are not counted as compute time.\n")
 
-for model in [f"small{suffix}", f"medium{suffix}"]:
-    if model.startswith("medium"):
-        best_small = max((f for m, b, f, w in results), default=0)
-        if best_small < TRY_MEDIUM_AT:
-            print(f"  skipping medium: small only reached {best_small:.1f}x, "
-                  f"medium would not keep up")
-            break
+# Largest first, stopping at the first that is comfortably real time. Nothing
+# smaller is downloaded once one succeeds. large-v3 is offered only with a
+# discrete card of 6 GB or more; it is 3 GB of weights and there is no point
+# measuring it on hardware that cannot hold it.
+ladder = []
+if DISCRETE and VRAM_MIB >= 6000:
+    ladder.append("large-v3")
+else:
+    print("  large-v3 skipped: needs a discrete GPU with 6 GB or more\n")
+ladder += [f"medium{suffix}", f"small{suffix}"]
+
+chosen = None
+for model in ladder:
     for backend, fn in candidates(model):
         try:
             el, words = fn()
@@ -150,9 +162,16 @@ for model in [f"small{suffix}", f"medium{suffix}"]:
             continue
         factor = dur / el
         results.append((model, backend, factor, words))
-        flag = "" if factor >= MIN_FACTOR else "   too slow"
-        print(f"  {model:<10} {backend:<8} {factor:>5.1f}x real time, "
-              f"{words} words{flag}")
+        note = "" if factor >= MIN_FACTOR else "   too slow"
+        print(f"  {model:<10} {backend:<8} {factor:>5.1f}x real time, {words} words{note}")
+
+    best = max((r for r in results if r[0] == model), key=lambda r: r[2], default=None)
+    if best and best[2] >= GOOD_ENOUGH:
+        chosen = best
+        print(f"\n  {model} clears {GOOD_ENOUGH}x, so nothing smaller is tested.")
+        break
+    if best:
+        print(f"  {model} only reached {best[2]:.1f}x, trying the next size down\n")
 
 print()
 
@@ -178,9 +197,17 @@ if not viable:
     print("RESULT none - 0")
     sys.exit(0)
 
-# largest model that clears the bar, on its fastest backend
-order = {f"medium{suffix}": 2, f"small{suffix}": 1}
-best = max(viable, key=lambda r: (order.get(r[0], 0), r[2]))
+# The ladder stops at the first model clearing GOOD_ENOUGH, so honour that
+# unless the quality floor rejected it. Otherwise take the largest model that
+# at least clears the minimum.
+if chosen and chosen in results:
+    best = chosen
+    why = f"first model clearing {GOOD_ENOUGH}x"
+else:
+    order = {"large-v3": 3, f"medium{suffix}": 2, f"small{suffix}": 1}
+    best = max(viable, key=lambda r: (order.get(r[0], 0), r[2]))
+    why = "largest model that keeps up"
+
 print(f"Selected: {best[0]} on {best[1]}, {best[2]:.1f}x real time.")
-print("Largest model that keeps up on this machine.")
+print(why + " on this machine.")
 print(f"RESULT {best[1]} {best[0]} {best[2]:.2f}")
