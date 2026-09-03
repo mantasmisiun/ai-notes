@@ -50,7 +50,7 @@ CONF
 
 if [ -f "$CONF" ]; then source "$CONF"; fi
 d_lang="${LECTURE_LANGUAGE:-en}"; d_note="${LECTURE_NOTE_LANGUAGE:-en}"
-d_llm="${LECTURE_LLM:-qwen3:8b}"; d_vault="${VAULT:-$HOME/Documents/Obsidian}"
+d_llm="${LECTURE_LLM:-gemma3:12b}"; d_vault="${VAULT:-$HOME/Documents/Obsidian}"
 d_tr="${TRANSCRIPTIONS_DIR:-Transcriptions}"; d_uni="${UNIVERSITY_DIR:-University}"
 d_scratch="${AUDIO_SCRATCH:-$HOME/lecture-recordings}"
 
@@ -269,47 +269,47 @@ if [ "$want_process" = 1 ]; then
   say "  Nothing waits on this stage, so the largest model that fits is used."
   say
 
-  # Size on what is actually FREE, not the card's total. A desktop holds 1.5 to
-  # 2 GB before anything starts, and the KV cache for a 16k context adds around
-  # another gigabyte on a larger model. Ollama spills layers to the CPU when a
-  # model does not fit and the summary then crawls, so each family is offered
-  # at the largest size that fits. Weights at Q4: gemma3 4b 3.3 GB, 12b 8.1 GB,
-  # 27b 17 GB; qwen3 8b 5.2 GB, 14b 9.3 GB; llama3.1 8b 4.9 GB.
-  usable=$(( VRAM_MIB - 2000 - 1200 ))
-  if   [ "$usable" -ge 18000 ]; then gemma="gemma3:27b"; gemma_gb="17"
-  elif [ "$usable" -ge 8600 ];  then gemma="gemma3:12b"; gemma_gb="8.1"
-  else                                gemma="gemma3:4b";  gemma_gb="3.3"; fi
-  if   [ "$usable" -ge 9500 ];  then qwen="qwen3:14b";   qwen_gb="9.3"
-  else                                qwen="qwen3:8b";    qwen_gb="5.2"; fi
+  # Each family at the largest size whose weights fit in VRAM with 1.5 GB to
+  # spare. Ollama spills what does not fit to system RAM and the CPU; that is
+  # slower, not fatal: a 12b that overflowed a 10 GB card by a little still
+  # wrote an 18-minute recording's notes in under two minutes. Weights at Q4,
+  # in MiB: gemma3 4b 3150, 12b 7730, 27b 16200; qwen3 8b 4960, 14b 8870;
+  # llama3.1 8b 4670.
+  room=$(( VRAM_MIB - 1500 ))
+  if   [ "$room" -ge 16200 ]; then gemma="gemma3:27b"; gemma_gb="17"
+  elif [ "$room" -ge 7730 ];  then gemma="gemma3:12b"; gemma_gb="8.1"
+  else                              gemma="gemma3:4b";  gemma_gb="3.3"; fi
+  if   [ "$room" -ge 8870 ];  then qwen="qwen3:14b";   qwen_gb="9.3"
+  else                              qwen="qwen3:8b";    qwen_gb="5.2"; fi
   llama="llama3.1:8b"; llama_gb="4.9"
 
   say "Model for writing the notes:"; say
-  say "  ${usable} MiB of VRAM is usable once the desktop and the context window"
-  say "  are allowed for, so each family is offered at the largest size that fits."
+  say "  Sizes are chosen for this card's ${VRAM_MIB} MiB. A model slightly too"
+  say "  large spills into system RAM and runs slower, but still works."
   say
-  # What each did on the same 17-minute, 3000-word English recording, with the
-  # same prompts, so the choice is made on evidence rather than on reputation.
-  say "  1) $(printf '%-12s' "$llama") ${llama_gb} GB  Fluent English. Wrote 450 words from 3000,"
-  say "                          fused two passages into a false claim and"
-  say "                          inverted who said what. Weakest of the three."
-  say "  2) $(printf '%-12s' "$gemma") ${gemma_gb} GB  Strong across languages, the best of the"
-  say "                          three for notes in Lithuanian. Not yet compared"
-  say "                          on the same recording as the other two."
+  say "  1) $(printf '%-12s' "$gemma") ${gemma_gb} GB  [recommended]"
+  say "                          Accurate, well-organised prose. Handles names,"
+  say "                          quotes in other languages and Lithuanian well."
+  say "                          Can smooth over small specifics."
   if [ "$gemma" = "gemma3:4b" ]; then
-  say "                          The 12b needs 8.1 GB and does not fit this card."
+  say "                          The 12b (8.1 GB) is too large for this card."
   fi
-  say "  3) $(printf '%-12s' "$qwen") ${qwen_gb} GB  Twice Llama's detail, legal facts and"
-  say "                          quotes right, still misattributed some lines."
-  say "                          [recommended]"
+  say "  2) $(printf '%-12s' "$qwen") ${qwen_gb} GB"
+  say "                          Keeps the most specifics: numbers, dates, exact"
+  say "                          quotes. Terser prose, more often misattributes who"
+  say "                          said what. Thinks before writing, so it is slower."
+  say "  3) $(printf '%-12s' "$llama") ${llama_gb} GB"
+  say "                          Fluent English, small and fast. Summarises rather"
+  say "                          than takes notes: drops detail and can merge"
+  say "                          separate statements into one. English only."
   say "  4) Other, enter an Ollama tag yourself"; say
   say "These can be changed later by re-running this installer and choosing"
   say "\"Change models only\"; nothing else is touched."; say
-  dflt=3
-  case "$(ask "Select" "$dflt")" in
-    2) llm="$gemma" ;;
-    3) llm="$qwen" ;;
+  case "$(ask "Select" "1")" in
+    2) llm="$qwen" ;;
+    3) llm="$llama" ;;
     4) llm="$(ask "Ollama tag" "$d_llm")" ;;
-    *) llm="$llama" ;;
+    *) llm="$gemma" ;;
   esac
   say "Summariser: $llm"; say
 fi

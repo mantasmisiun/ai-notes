@@ -24,7 +24,7 @@ live view during the lecture. Splitting gets both.
 LAPTOP                              DESKTOP (RTX 3080)
   tap a dock button                   systemd timer, every minute
   ffmpeg -> raw PCM                   stage 1  whisper large-v3
-  faster-whisper small.en (live)      stage 2  qwen3:8b, chunked
+  faster-whisper small.en (live)      stage 2  gemma3:12b, chunked
   convert to Opus                     stage 3  retire the live note
   blinking tray icon                  stage 4  delete audio after 7 days
 ```
