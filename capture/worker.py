@@ -5,7 +5,7 @@ then compress the audio into the vault and embed it.
 Audio is written as headerless raw PCM so that a power cut costs only the tail,
 never the whole file.
 """
-import os, sys, signal, subprocess, datetime, threading
+import os, sys, re, time, signal, subprocess, datetime, threading
 
 from pathlib import Path
 
@@ -74,6 +74,13 @@ def append(text):
         os.fsync(f.fileno())
 
 
+# A chunk of two or more characters repeated three or more times inside one
+# word is never speech. The segment-level compression ratio misses it when the
+# segment also holds real words: a flush on trailing silence appended
+# "džiaugiuosiuosiuosiuosiuose" after a correct final sentence.
+STUTTER = re.compile(r"(..+?)\1{2,}")
+
+
 class Live:
     """Keeps the note in step with a rolling window.
 
@@ -115,20 +122,25 @@ class Live:
         # and the first thirty words lost.
         keep, tail, settled_to = [], [], self.settled_until
         for seg in segments:
-            # Whisper's own confidence statistics flag hallucinations. High
-            # compression ratio is repetition, very low log-probability is
-            # guessing, high no-speech probability is silence being narrated.
-            # A final flush on trailing silence produced a dozen copies of one
-            # invented word before this filter existed.
-            if (getattr(seg, "no_speech_prob", 0) > 0.6
-                    or getattr(seg, "compression_ratio", 0) > 2.4
-                    or getattr(seg, "avg_logprob", 0) < -1.0):
+            # Whisper's own confidence statistics flag hallucinations, applied
+            # by Whisper's own rule: a segment is silence being narrated only
+            # when no-speech probability is high AND log-probability is low,
+            # together. Dropping on low log-probability alone, as an earlier
+            # version did, threw away whole 30-second windows of Lithuanian
+            # from a multilingual model, whose every segment scores low; the
+            # note then did not change for passes on end and the last words
+            # before Stop never landed. High compression ratio is repetition
+            # and is dropped on its own: a flush on trailing silence once
+            # produced a dozen copies of one invented word.
+            if (getattr(seg, "compression_ratio", 0) > 2.4
+                    or (getattr(seg, "no_speech_prob", 0) > 0.6
+                        and getattr(seg, "avg_logprob", 0) < -1.0)):
                 continue
             words = seg.words or []
             units = ([(w.start, w.end, w.word.strip()) for w in words] if words
                      else [(seg.start, seg.end, seg.text.strip())])
             for w_start, w_end, text in units:
-                if not text:
+                if not text or STUTTER.search(text):
                     continue
                 start_abs, end_abs = buf_start + w_start, buf_start + w_end
                 # Skip by where the word STARTS, with tolerance. Re-alignment
@@ -343,6 +355,24 @@ def main():
                     f"settled {len(live.settled.split())} words")
                 since_pass = 0
 
+        # Stop the microphone first, then take every byte ffmpeg emitted before
+        # the last pass. Stop used to flush the window as of the previous
+        # drain, so the final fraction of a second was in the audio but never
+        # in the text. Draining has to follow the terminate: a live source
+        # never goes quiet on its own, so waiting for the queue to empty
+        # would wait forever.
+        if not ended:
+            ff.terminate()
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                try:
+                    data = chunks_q.get(timeout=0.5)
+                except queue.Empty:
+                    continue
+                if data is None:
+                    break
+                buf += data
+                total += len(data)
         log(f"stopping after {total / (RATE * 2):.0f}s of audio")
         if model is not None and buf:
             now = total / (RATE * 2)
