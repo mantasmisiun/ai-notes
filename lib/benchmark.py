@@ -243,7 +243,7 @@ results = kept
 viable = [r for r in results if r[2] >= MIN_FACTOR]
 if not viable:
     print(f"Nothing reaches the {MIN_FACTOR}x minimum for live transcription.")
-    print("RESULT none - 0")
+    print("RESULT\tnone\t-\t0\t12\t30")
     sys.exit(0)
 
 # The ladder stops at the first model clearing GOOD_ENOUGH, so honour that
@@ -271,4 +271,7 @@ window = 30
 print(f"Selected: {label(best[0])} on {best[1]}, {best[2]:.1f}x real time.")
 print(f"Live caption: {window}s window, updating every {interval}s.")
 print(why + " on this machine.")
-print(f"RESULT {best[1]} {best[0]} {best[2]:.2f} {interval} {window}")
+# Tab-separated, because the model field can be a directory path and a
+# path can contain spaces. A username with a space in it broke the
+# space-split version on the first Windows machine to try it.
+print("RESULT\t" + "\t".join([best[1], best[0], f"{best[2]:.2f}", str(interval), str(window)]))

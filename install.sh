@@ -230,10 +230,10 @@ elif [ "$want_capture" = 1 ]; then
         GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
         "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
         "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
-  result="$(printf '%s\n' "$out" | sed -n 's/^RESULT //p')"
-  backend="$(printf '%s' "$result" | cut -d' ' -f1)"
-  live="$(printf '%s' "$result"    | cut -d' ' -f2)"
-  chunk_secs="$(printf '%s' "$result" | cut -d' ' -f4)"
+  result="$(printf '%s\n' "$out" | sed -n 's/^RESULT\t//p')"
+  backend="$(printf '%s' "$result"    | cut -d"$(printf '\t')" -f1)"
+  live="$(printf '%s' "$result"       | cut -d"$(printf '\t')" -f2)"
+  chunk_secs="$(printf '%s' "$result" | cut -d"$(printf '\t')" -f4)"
   say
 
   if [ "$backend" = "none" ]; then
