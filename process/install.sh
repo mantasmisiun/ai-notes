@@ -25,7 +25,7 @@ python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install -q --upgrade pip
 # cuBLAS and cuDNN 9 are needed by CTranslate2 at runtime; the driver alone
 # does not provide them.
-"$DIR/venv/bin/pip" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12
+"$DIR/venv/bin/pip" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
 
 asr="${LECTURE_ASR_MODEL:-large-v3}"
 prec="${LECTURE_ASR_COMPUTE:-float16}"

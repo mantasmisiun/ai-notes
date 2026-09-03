@@ -15,6 +15,8 @@ UNI="$VAULT/$UNIVERSITY_DIR"
 
 MIN_FREE_MIB=7000        # room for whisper large-v3 or an 8B model
 KEEP_AUDIO_DAYS=7        # audio is the only irreplaceable artefact
+MAX_SUMMARISE_TRIES=2    # then ask, rather than pinning the GPU forever
+RETRY_BACKOFF_SECS=300
 
 mkdir -p "$STATE" "$NOTES"/{live,transcripts,audio,unfiled}
 log() { printf '%s  %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
@@ -121,6 +123,16 @@ for transcript in "$NOTES/transcripts"/*.md; do
     rm -f "$marker"
   fi
 
+  # Given up on, by you, after it failed twice.
+  [ -f "$STATE/$stamp.ignored" ] && continue
+
+  # Back off between attempts. Retrying a failing summary every minute pins the
+  # GPU indefinitely, which is worse than waiting.
+  if [ -f "$STATE/$stamp.retry_after" ] &&
+     [ "$(date +%s)" -lt "$(cat "$STATE/$stamp.retry_after")" ]; then
+    continue
+  fi
+
   log "summarise: starting $stamp"
   out=$(LECTURE_OLLAMA_HOST=127.0.0.1:11434 \
         "$SELF/venv/bin/python" "$SELF/summarise.py" \
@@ -130,9 +142,24 @@ for transcript in "$NOTES/transcripts"/*.md; do
   if [ -n "$out" ] && [ -f "$out" ]; then
     printf '%s\n' "$out" > "$marker"
     log "summarise: done $stamp -> $out"
+    rm -f "$STATE/$stamp.fails" "$STATE/$stamp.retry_after"
     python3 "$SELF/reindex.py" "$VAULT" >> "$LOG" 2>&1
   else
-    log "summarise: FAILED $stamp"
+    fails=$(( $(cat "$STATE/$stamp.fails" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$fails" > "$STATE/$stamp.fails"
+    if [ "$fails" -lt "$MAX_SUMMARISE_TRIES" ]; then
+      printf '%s' "$(( $(date +%s) + RETRY_BACKOFF_SECS ))" > "$STATE/$stamp.retry_after"
+      log "summarise: FAILED $stamp (attempt $fails), retrying in $((RETRY_BACKOFF_SECS / 60)) min"
+    else
+      log "summarise: FAILED $stamp twice, asking what to do"
+      out=$("$SELF/venv/bin/python" "$SELF/failed_dialog.py" "$stamp" \
+            "$(tail -1 "$LOG" | cut -c22-)" 2>/dev/null)
+      if [ "$out" = "IGNORE" ]; then
+        : > "$STATE/$stamp.ignored"
+        log "ignoring $stamp from now on"
+      fi
+      rm -f "$STATE/$stamp.fails" "$STATE/$stamp.retry_after"
+    fi
   fi
   exit 0
 done

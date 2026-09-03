@@ -22,6 +22,8 @@ import platform_support as ps
 
 MIN_FREE_MIB    = int(os.environ.get("LECTURE_MIN_FREE_MIB", "7000"))
 KEEP_AUDIO_DAYS = int(os.environ.get("LECTURE_KEEP_AUDIO_DAYS", "7"))
+MAX_TRIES       = 2      # then ask, rather than pinning the GPU forever
+RETRY_BACKOFF   = 300
 AUDIO_EXT       = (".ogg", ".mp3", ".m4a", ".wav")
 
 STATE = ps.state_dir("lecture-notes")
@@ -169,6 +171,15 @@ def stage_summarise(NOTES, VAULT, env):
             log(f"note for {stamp} is gone, re-summarising")
             marker.unlink()
 
+        if (STATE / f"{stamp}.ignored").exists():
+            continue                       # given up on, by you, after two failures
+
+        # Back off between attempts. Retrying a failing summary every minute
+        # pins the GPU indefinitely, which is worse than waiting.
+        ra = STATE / f"{stamp}.retry_after"
+        if ra.exists() and time.time() < float(ra.read_text().strip() or 0):
+            continue
+
         log(f"summarise: starting {stamp}")
         # Stream rather than capture: summarising a long lecture takes minutes
         # and per-chunk progress is the only sign it is alive.
@@ -191,12 +202,36 @@ def stage_summarise(NOTES, VAULT, env):
         if proc.returncode != 0 and tail:
             log(tail[-1])
 
+        fails_f = STATE / f"{stamp}.fails"
         if out and Path(out).exists():
             marker.write_text(out, encoding="utf-8")
             log(f"summarise: done {stamp} -> {out}")
+            fails_f.unlink(missing_ok=True)
+            ra.unlink(missing_ok=True)
             subprocess.run([venv_py(), str(HERE / "reindex.py"), str(VAULT)], env=env)
         else:
-            log(f"summarise: FAILED {stamp}")
+            fails = int(fails_f.read_text().strip() or 0) if fails_f.exists() else 0
+            fails += 1
+            fails_f.write_text(str(fails))
+            if fails < MAX_TRIES:
+                ra.write_text(str(time.time() + RETRY_BACKOFF))
+                log(f"summarise: FAILED {stamp} (attempt {fails}), "
+                    f"retrying in {RETRY_BACKOFF // 60} min")
+            else:
+                log(f"summarise: FAILED {stamp} twice, asking what to do")
+                try:
+                    d = subprocess.run(
+                        [venv_py(), str(HERE / "failed_dialog.py"), stamp,
+                         tail[-1] if tail else ""],
+                        capture_output=True, text=True, timeout=600)
+                    if "IGNORE" in (d.stdout or ""):
+                        (STATE / f"{stamp}.ignored").touch()
+                        log(f"ignoring {stamp} from now on")
+                except Exception as e:
+                    log(f"could not ask: {type(e).__name__}; leaving it alone")
+                    (STATE / f"{stamp}.ignored").touch()
+                fails_f.unlink(missing_ok=True)
+                ra.unlink(missing_ok=True)
         return True
     return False
 
