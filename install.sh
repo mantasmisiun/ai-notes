@@ -138,6 +138,26 @@ else
 fi
 say
 
+# Lithuanian has one model worth using. The stock multilingual ones mangle word
+# endings badly enough that the transcript is hard to read, so there is no
+# choice to offer: it is prepared and used for both passes.
+LT_MODEL=""
+if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
+  say "Lithuanian uses a dedicated model, paprika-whisper-lt. It recognises"
+  say "Lithuanian word forms far better than the stock multilingual models."
+  say "Its output has no punctuation or capitalisation, which the summariser"
+  say "copes with but which makes the raw transcript harder to read."
+  say
+  LT_MODEL="$(python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" 2>&1 | tail -1)"
+  if [ ! -d "$LT_MODEL" ]; then
+    say "could not prepare the Lithuanian model:"
+    say "  $LT_MODEL"
+    exit 1
+  fi
+  say "  ready: $LT_MODEL"
+  say
+fi
+
 # first pass: the component installers need the paths before they can run
 backend="${LECTURE_BACKEND:-cpu}"; live=""; asr_model=""; asr_compute=""; llm="$d_llm"
 write_config
@@ -173,6 +193,7 @@ elif [ "$want_capture" = 1 ]; then
   wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
   bench_lang="$lang"; [ -f "$ROOT/samples/sample-$lang.ogg" ] || bench_lang=en
   out="$(HAS_CUDA=$HAS_CUDA MIN_LIVE_FACTOR=$MIN_LIVE_FACTOR \
+        LECTURE_FIXED_MODEL="$LT_MODEL" \
         GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
         "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
         "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
@@ -205,7 +226,8 @@ fi
 
 # ---- accurate model, derived from VRAM rather than asked -------------------
 if [ "$want_process" = 1 ]; then
-  if   [ "$VRAM_MIB" -ge 6000 ]; then asr_model=large-v3; asr_compute=float16
+  if   [ -n "$LT_MODEL" ];       then asr_model="$LT_MODEL"; asr_compute=int8
+  elif [ "$VRAM_MIB" -ge 6000 ]; then asr_model=large-v3; asr_compute=float16
   elif [ "$VRAM_MIB" -ge 4000 ]; then asr_model=large-v3; asr_compute=int8_float16
   else                                asr_model=medium;   asr_compute=int8_float16
   fi

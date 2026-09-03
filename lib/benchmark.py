@@ -91,10 +91,10 @@ print(json.dumps({"elapsed": time.perf_counter() - t0, "words": words}))
 def time_faster_whisper(model, device):
     """Run in a child process: loading two 1.5 GB models in one process is
     enough to trigger the OOM killer on a 16 GB laptop."""
-    with Spinner(f"downloading {model}"):
+    with Spinner(f"downloading {label(model)}"):
         subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "fetch"],
                        capture_output=True, text=True, check=True)
-    with Spinner(f"benchmarking {model} on {device}"):
+    with Spinner(f"benchmarking {label(model)} on {device}"):
         r = subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "run"],
                            capture_output=True, text=True)
     if r.returncode != 0:
@@ -106,11 +106,11 @@ def time_faster_whisper(model, device):
 def time_whisper_cpp(model):
     ggml = os.path.join(wcpp, "models", f"ggml-{model}.bin")
     if not os.path.exists(ggml):
-        with Spinner(f"downloading {model} for whisper.cpp"):
+        with Spinner(f"downloading {label(model)} for whisper.cpp"):
             subprocess.run(["sh", os.path.join(wcpp, "models", "download-ggml-model.sh"), model],
                            cwd=wcpp, check=True, capture_output=True)
     t0 = time.perf_counter()
-    sp = Spinner(f"benchmarking {model} on vulkan"); sp.__enter__()
+    sp = Spinner(f"benchmarking {label(model)} on vulkan"); sp.__enter__()
     r = subprocess.run([os.path.join(wcpp, "build/bin/whisper-cli"),
                         "-m", ggml, "-l", lang, "-f", wav, "-t", str(os.cpu_count() or 4),
                         "-otxt", "-of", os.path.join(work, "bench")],
@@ -124,8 +124,20 @@ def time_whisper_cpp(model):
     return el, words
 
 
+def label(model):
+    """A path is unreadable in a log line; show its directory name."""
+    return os.path.basename(model.rstrip("/")) if os.path.isdir(model) else model
+
+
 def candidates(model):
     out = []
+    if os.path.isdir(model):
+        # A converted CTranslate2 directory: faster-whisper only, since
+        # whisper.cpp needs its own GGML format.
+        if has_cuda:
+            out.append(("cuda", lambda m=model: time_faster_whisper(m, "cuda")))
+        out.append(("cpu", lambda m=model: time_faster_whisper(m, "cpu")))
+        return out
     if has_cuda:
         out.append(("cuda", lambda m=model: time_faster_whisper(m, "cuda")))
     if has_vulkan:
@@ -142,12 +154,19 @@ print("Fetching models first, so downloads are not counted as compute time.\n")
 # smaller is downloaded once one succeeds. large-v3 is offered only with a
 # discrete card of 6 GB or more; it is 3 GB of weights and there is no point
 # measuring it on hardware that cannot hold it.
-ladder = []
-if DISCRETE and VRAM_MIB >= 6000:
-    ladder.append("large-v3")
+FIXED = os.environ.get("LECTURE_FIXED_MODEL", "")
+if FIXED:
+    # Some languages have one obviously right model and no useful choice. It is
+    # still measured, because whether it keeps up is a property of the machine.
+    ladder = [FIXED]
+    print(f"  using {os.path.basename(FIXED)}, the model for this language\n")
 else:
-    print("  large-v3 skipped: needs a discrete GPU with 6 GB or more\n")
-ladder += [f"medium{suffix}", f"small{suffix}"]
+    ladder = []
+    if DISCRETE and VRAM_MIB >= 6000:
+        ladder.append("large-v3")
+    else:
+        print("  large-v3 skipped: needs a discrete GPU with 6 GB or more\n")
+    ladder += [f"medium{suffix}", f"small{suffix}"]
 
 chosen = None
 for model in ladder:
@@ -155,23 +174,27 @@ for model in ladder:
         try:
             el, words = fn()
         except Exception as e:
-            print(f"  {model:<10} {backend:<8} unavailable ({type(e).__name__})")
+            print(f"  {label(model):<28} {backend:<8} unavailable ({type(e).__name__})")
             continue
         if el is None:
-            print(f"  {model:<10} {backend:<8} failed")
+            print(f"  {label(model):<28} {backend:<8} failed")
             continue
         factor = dur / el
         results.append((model, backend, factor, words))
         note = "" if factor >= MIN_FACTOR else "   too slow"
-        print(f"  {model:<10} {backend:<8} {factor:>5.1f}x real time, {words} words{note}")
+        print(f"  {label(model):<28} {backend:<8} {factor:>5.1f}x real time, "
+              f"{words} words{note}")
 
     best = max((r for r in results if r[0] == model), key=lambda r: r[2], default=None)
     if best and best[2] >= GOOD_ENOUGH:
         chosen = best
-        print(f"\n  {model} clears {GOOD_ENOUGH}x, so nothing smaller is tested.")
+        if len(ladder) > 1:
+            print(f"\n  {label(model)} clears {GOOD_ENOUGH}x, "
+                  f"so nothing smaller is tested.")
         break
-    if best:
-        print(f"  {model} only reached {best[2]:.1f}x, trying the next size down\n")
+    if best and model != ladder[-1]:
+        print(f"  {label(model)} only reached {best[2]:.1f}x, "
+              f"trying the next size down\n")
 
 print()
 
@@ -206,8 +229,9 @@ if chosen and chosen in results:
 else:
     order = {"large-v3": 3, f"medium{suffix}": 2, f"small{suffix}": 1}
     best = max(viable, key=lambda r: (order.get(r[0], 0), r[2]))
-    why = "largest model that keeps up"
+    why = ("the model for this language" if FIXED
+               else "largest model that keeps up")
 
-print(f"Selected: {best[0]} on {best[1]}, {best[2]:.1f}x real time.")
+print(f"Selected: {label(best[0])} on {best[1]}, {best[2]:.1f}x real time.")
 print(why + " on this machine.")
 print(f"RESULT {best[1]} {best[0]} {best[2]:.2f}")
