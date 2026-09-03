@@ -33,7 +33,11 @@ MAX_PREDICT      = int(os.environ.get("LECTURE_MAX_PREDICT", "4096"))
 # Generous, because a reasoning model spends part of its budget thinking
 # before it writes the title at all.
 TOPIC_PREDICT    = int(os.environ.get("LECTURE_TOPIC_PREDICT", "300"))
-WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "2500"))
+# A model writes a few hundred words per call whatever it is given, so the
+# detail in the note scales with the number of section calls, not with the
+# prompt. 2500-word chunks turned a 3000-word transcript into 450 words of
+# note; 1000-word chunks give three times the passes and three times the detail.
+WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "1000"))
 SRCLANG   = os.environ.get("LECTURE_LANGUAGE", "en")
 NOTELANG  = os.environ.get("LECTURE_NOTE_LANGUAGE", SRCLANG)
 
@@ -105,22 +109,112 @@ def unfence(t):
     return t.strip()
 
 
-def body_of(path):
+TIME_RE = re.compile(r"\*\*\[(\d{1,2}:\d\d:\d\d)\]\*\*")
+# a time the model cites, allowing the bold or code it may wrap it in
+CITED_RE = re.compile(r"`?\*{0,2}\[(\d{1,2}:\d\d:\d\d)\]\*{0,2}`?")
+
+
+def block_id(label):
+    """[0:03:08] -> t0-03-08, an Obsidian block id (letters, digits, dashes)."""
+    return "t" + label.replace(":", "-")
+
+
+def secs(label):
+    h, m_, s_ = (int(x) for x in label.split(":"))
+    return h * 3600 + m_ * 60 + s_
+
+
+def ensure_block_ids(path):
+    """Give every timestamped paragraph the block id transcribe.py now writes,
+    so notes can link into transcripts made before that existed. Idempotent."""
     t = open(path, encoding="utf-8").read()
-    t = re.sub(r"^---.*?---\n", "", t, flags=re.S)
-    t = re.sub(r"\*\*\[[0-9:]+\]\*\*", "", t)
-    return re.sub(r"\s+", " ", t).strip()
+    fm = re.match(r"^---\n.*?\n---\n", t, re.S)
+    head, body = (fm.group(0), t[fm.end():]) if fm else ("", t)
+    paras, changed = [], False
+    for para in re.split(r"\n\s*\n", body.strip()):
+        m_ = TIME_RE.match(para.strip())
+        if m_ and not re.search(r"\^t[\d-]+\s*$", para):
+            para = para.rstrip() + f" ^{block_id(m_.group(1))}"
+            changed = True
+        paras.append(para)
+    if changed:
+        tmp_ = path + ".tmp"
+        open(tmp_, "w", encoding="utf-8").write(head + "\n" + "\n\n".join(paras) + "\n")
+        os.replace(tmp_, path)
 
 
-def chunks(text, size, overlap=200):
-    """Split into passes with a little overlap. Without it, a definition that
-    straddles a boundary is seen twice, each time with half its context."""
-    w = text.split()
-    out, i = [], 0
-    while i < len(w):
-        out.append(" ".join(w[i:i + size]))
-        i += max(1, size - overlap)
+def paragraphs(path):
+    """[(time label or None, text)] per transcript paragraph, with the marker
+    and the block id removed from the text."""
+    t = open(path, encoding="utf-8").read()
+    t = re.sub(r"^---\n.*?\n---\n", "", t, flags=re.S)
+    out = []
+    for para in re.split(r"\n\s*\n", t.strip()):
+        m_ = TIME_RE.match(para.strip())
+        body = re.sub(r"\s\^t[\d-]+\s*$", "", TIME_RE.sub("", para))
+        body = re.sub(r"\s+", " ", body).strip()
+        if body:
+            out.append((m_.group(1) if m_ else None, body))
     return out
+
+
+def chunk_paragraphs(paras, size):
+    """Chunks of about `size` words cut only at paragraph starts, so every
+    chunk opens on a time marker the model can cite, and markers stay in the
+    text as [0:03:08]. A short tail is folded into the chunk before it.
+    Returns [(first label, last label, text)]."""
+    groups, cur, n = [], [], 0
+    for label, body in paras:
+        w = len(body.split())
+        if cur and n + w > size:
+            groups.append(cur); cur, n = [], 0
+        cur.append((label, body)); n += w
+    if cur:
+        if groups and n < size // 3:
+            groups[-1].extend(cur)
+        else:
+            groups.append(cur)
+    out = []
+    for g in groups:
+        labels = [l for l, _ in g if l]
+        text = " ".join((f"[{l}] " if l else "") + b for l, b in g)
+        out.append((labels[0] if labels else "", labels[-1] if labels else "", text))
+    return out
+
+
+def linker(labels, rel_transcript):
+    """Turns a cited time into a link that opens the transcript at that
+    paragraph. A time the model made up is snapped to the nearest marker
+    before it, so every link lands somewhere real."""
+    known = sorted(set(labels), key=secs)
+    if not known:
+        return lambda text: text
+
+    def target(label):
+        if label in known:
+            return label
+        t = secs(label)
+        before = [k for k in known if secs(k) <= t]
+        return before[-1] if before else known[0]
+
+    def link(label):
+        k = target(label)
+        return f"[[{rel_transcript}#^{block_id(k)}|{k}]]"
+
+    def convert(text):
+        return CITED_RE.sub(lambda mm: link(mm.group(1)), text)
+    convert.link = link
+    return convert
+
+
+def split_off(note, heading):
+    """Remove one ## section from the model's output and return (rest, section),
+    so Open questions can sit after the detail rather than before it."""
+    mm = re.search(rf"^## {re.escape(heading)}\s*$\n(.*?)(?=^## |\Z)", note, re.S | re.M)
+    if not mm:
+        return note, ""
+    section = mm.group(0).strip()
+    return (note[:mm.start()] + note[mm.end():]).strip(), section
 
 
 def own_notes_body(path):
@@ -225,26 +319,57 @@ context = prompts.describe(area, subject, kind, NOTELANG)
 print(f"  treating this as {context}", flush=True)
 P = prompts.get(NOTELANG, SRCLANG, context)
 
-text  = body_of(transcript)
-parts = chunks(text, WORDS)
-print(f"{len(text.split())} words in {len(parts)} chunk(s)", flush=True)
+H = prompts.HEADINGS.get(NOTELANG, prompts.HEADINGS["en"])
+rel_transcript = os.path.relpath(transcript, VAULT)[:-3].replace(os.sep, "/")        # drop .md
+
+ensure_block_ids(transcript)
+paras = paragraphs(transcript)
+parts = chunk_paragraphs(paras, WORDS)
+n_words = sum(len(b.split()) for _, b in paras)
+print(f"{n_words} words in {len(parts)} chunk(s)", flush=True)
+
+# The student's notes go to every call, not only the combine: the body of the
+# note is now the section notes themselves, so a name the student corrected
+# has to be corrected where the detail is written.
+notes_intro = P["notes_intro"].format(notes=own) if own else ""
 
 summaries = []
 t_start = time.time()
-for i, c in enumerate(parts, 1):
+prev_text = ""
+for i, (start, end, c) in enumerate(parts, 1):
     t0 = time.time()
-    summaries.append(ask(P["section"].format(chunk=c)))
+    # the last hundred words of the previous chunk, for continuity across the
+    # cut without writing the same point twice
+    prior = P["prior"].format(prior=" ".join(prev_text.split()[-120:])) if prev_text else ""
+    summaries.append(ask(notes_intro + P["section"].format(chunk=c, prior=prior)))
+    prev_text = c
     el = time.time() - t0
     done = time.time() - t_start
     eta = done / i * (len(parts) - i)
     print(f"  section {i}/{len(parts)}  {el:.0f}s"
           + (f", about {eta/60:.0f} min left" if i < len(parts) else ""), flush=True)
 
+# The model writes only the top of the note. The detail is the section notes
+# themselves, one subheading per chunk, with every cited time linked to the
+# transcript paragraph it came from. A second pass through the model used to
+# rewrite the body and, with an 8B model, halved it every time.
 print("  combining", flush=True)
-combine = P["combine"]
-if own:
-    combine = P["notes_intro"].format(notes=own) + combine
-note = unfence(ask(combine.format(sections="\n\n---\n\n".join(summaries))))
+top = unfence(ask(notes_intro + P["combine"].format(sections="\n\n---\n\n".join(summaries))))
+top, open_q = split_off(top, H["open"])
+
+detail = [f"## {H['detail']}"]
+for (start, end, c), notes in zip(parts, summaries):
+    # snap only to markers inside this chunk: a time the model invents then
+    # lands somewhere in the passage it was writing about, not at the far end
+    # of the recording
+    convert = linker(re.findall(r"\[(\d{1,2}:\d\d:\d\d)\]", c), rel_transcript)
+    rng = convert.link(start) if start else ""
+    if end and end != start:
+        rng += f" to {end}"
+    detail.append((f"### {rng}\n\n" if rng else "") + convert(notes.strip()))
+note = top.rstrip() + "\n\n" + "\n\n".join(detail)
+if open_q:
+    note += "\n\n" + open_q
 
 print("  titling", flush=True)
 raw_topic = unfence(ask(P["topic"].format(note=note[:4000]), predict=TOPIC_PREDICT))
@@ -273,7 +398,6 @@ os.makedirs(dest_dir, exist_ok=True)
 out = os.path.join(dest_dir, fname)
 tmp = out + ".tmp"
 
-rel_transcript = os.path.relpath(transcript, VAULT)[:-3].replace(os.sep, "/")        # drop .md
 audio = None
 for ext in (".ogg", ".mp3", ".m4a", ".wav"):
     p = os.path.join(NOTES, "audio", stamp + ext)
