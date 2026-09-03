@@ -1,4 +1,4 @@
-# lecture-pipeline
+# ai-notes
 
 Record a university lecture on a laptop, get a structured study note in the right
 folder of an Obsidian vault, without touching anything in between.
@@ -156,9 +156,11 @@ Processing: an NVIDIA GPU with at least 8 GB, ffmpeg, Python 3.11+, Ollama.
 
 ## Install
 
+### Linux
+
 ```bash
-git clone https://github.com/<you>/lecture-pipeline.git ~/lecture-pipeline
-cd ~/lecture-pipeline
+git clone https://github.com/mantasmisiun/ai-notes.git
+cd ai-notes
 ./install.sh
 ```
 
@@ -173,6 +175,101 @@ and then delete.
 
 Run it once per machine. Each keeps its own `config.sh`, which is gitignored,
 because the vault is rarely at the same path on both.
+
+### Windows
+
+The interactive installer is a bash script, so setup is manual here. Everything
+it configures is done by hand instead; the pipeline itself is the same Python.
+
+**None of this has been run on Windows.** It is written from documentation, so
+expect to hit something. Microphone detection is the most likely, since it
+parses ffmpeg's device listing and that output is not a stable interface.
+
+In PowerShell:
+
+```powershell
+winget install Git.Git
+winget install Python.Python.3.12
+winget install Gyan.FFmpeg
+```
+
+Reopen PowerShell so PATH updates, then check a microphone is visible. Nothing
+below works without this. It exits with an error by design and prints the
+devices to stderr; you want a line marked `(audio)`.
+
+```powershell
+ffmpeg -list_devices true -f dshow -i dummy
+```
+
+Then clone and configure:
+
+```powershell
+cd $HOME\Documents
+git clone https://github.com/mantasmisiun/ai-notes.git
+cd ai-notes
+Copy-Item config.sh.example config.sh
+notepad config.sh
+```
+
+`config.sh` is read as plain `KEY="value"` lines rather than executed, so shell
+syntax is not needed. Use forward slashes:
+
+```
+VAULT="C:/Users/you/Documents/Obsidian/My Vault"
+TRANSCRIPTIONS_DIR="Transcriptions"
+UNIVERSITY_DIR="University"
+AUDIO_SCRATCH="C:/Users/you/AppData/Local/lecture-pipeline"
+WANT_CAPTURE=1
+WANT_PROCESS=0
+LECTURE_BACKEND="cpu"
+LECTURE_LANGUAGE="en"
+LECTURE_NOTE_LANGUAGE="en"
+LECTURE_MODEL="small.en"
+LECTURE_ASR_MODEL="large-v3"
+LECTURE_ASR_COMPUTE="float16"
+LECTURE_LLM="qwen3:8b"
+```
+
+**Capture:**
+
+```powershell
+python -m venv capture\venv
+capture\venv\Scripts\pip install faster-whisper numpy PyQt6
+capture\venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', compute_type='int8')"
+capture\venv\Scripts\python capture\record.py
+```
+
+Run `record.py` again to stop. Stopping goes through a file rather than a
+signal, because Windows has no SIGTERM, so a second run always reaches the
+first. Make a shortcut to that command and pin it to the taskbar.
+
+**Processing**, only on a machine with an NVIDIA card and Ollama:
+
+```powershell
+python -m venv process\venv
+process\venv\Scripts\pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
+process\venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cuda', compute_type='float16')"
+ollama pull qwen3:8b
+```
+
+Set `OLLAMA_KEEP_ALIVE=30s` as a user environment variable and restart Ollama,
+or the model holds VRAM and transcription never finds enough free.
+
+Register the timer, from the repository root:
+
+```powershell
+process\venv\Scripts\python -c "import sys; sys.path.insert(0,'shared'); import platform_support as p; import os; print(p.register_periodic('lecture-notes', [os.path.abspath(r'process\venv\Scripts\python.exe'), os.path.abspath(r'process\pipeline.py')], 1))"
+```
+
+Check it with `schtasks /Query /TN lecture-notes`, and read
+`%LOCALAPPDATA%\lecture-notes\state\run.log` to see what it is doing.
+
+**Known gaps on Windows.** Sleep inhibition uses `SetThreadExecutionState`,
+which stops idle sleep but not a lid close on every machine, so a recording can
+end early. Notifications fall back to a console line rather than a toast. And
+the hardware benchmark and the Vulkan backend are Linux only, so the model is
+whatever `config.sh` names rather than something measured; `small.en` is the
+safe starting value.
 
 **If you install both halves on one machine**, processing refuses to start while
 a recording is in progress. The live transcript has a person waiting on it, so it
