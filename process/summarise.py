@@ -264,6 +264,18 @@ def merge_blocks(detail):
         else:
             index[key] = len(blocks)
             blocks.append([title, body])
+    # In the order the recording went, by each block's first time link. The
+    # model wrote a 0:02:08 topic after a 0:04:10 one; a block with no time
+    # of its own stays after the block before it.
+    def first_time(body):
+        m = re.search(r"\|(\d{1,2}):(\d\d):(\d\d)\]\]", body)
+        return (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))) if m else None
+    keyed, last = [], -1
+    for t, b in blocks:
+        ft = first_time(b)
+        last = ft if ft is not None else last
+        keyed.append((last, t, b))
+    blocks = [(t, b) for _, t, b in sorted(keyed, key=lambda x: x[0])]
     return head + "\n\n".join(f"{t}\n{b}" for t, b in blocks) + "\n"
 
 
