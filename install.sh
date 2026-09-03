@@ -290,17 +290,17 @@ if [ "$want_process" = 1 ]; then
   # What each did on the same 17-minute, 3000-word English recording, with the
   # same prompts, so the choice is made on evidence rather than on reputation.
   say "  1) $(printf '%-12s' "$llama") ${llama_gb} GB  Fluent English. Wrote 450 words from 3000,"
-  say "                              fused two passages into a false claim and"
-  say "                              inverted who said what. Weakest of the three."
+  say "                          fused two passages into a false claim and"
+  say "                          inverted who said what. Weakest of the three."
   say "  2) $(printf '%-12s' "$gemma") ${gemma_gb} GB  Strong across languages, the best of the"
-  say "                              three for notes in Lithuanian. Not yet compared"
-  say "                              on the same recording as the other two."
+  say "                          three for notes in Lithuanian. Not yet compared"
+  say "                          on the same recording as the other two."
   if [ "$gemma" = "gemma3:4b" ]; then
-  say "                              The 12b needs 8.1 GB and does not fit this card."
+  say "                          The 12b needs 8.1 GB and does not fit this card."
   fi
   say "  3) $(printf '%-12s' "$qwen") ${qwen_gb} GB  Twice Llama's detail, legal facts and"
-  say "                              quotes right, still misattributed some lines."
-  say "                              [recommended]"
+  say "                          quotes right, still misattributed some lines."
+  say "                          [recommended]"
   say "  4) Other, enter an Ollama tag yourself"; say
   say "These can be changed later by re-running this installer and choosing"
   say "\"Change models only\"; nothing else is touched."; say
