@@ -73,9 +73,10 @@ Time markers such as [0:03:08] show where each paragraph of the transcript
 starts.
 
 Turn this part into study notes a reader can follow without the recording.
-Work topic by topic: start a new block whenever the subject changes, which is
-usually every one to four minutes of speech. Every block has exactly this
-shape:
+Work topic by topic: one block per distinct subject, however briefly it was
+covered. A subject that got two sentences gets a block with one or two
+points; a news bulletin or a quick run through several items gets a block
+per item. Every block has exactly this shape:
 
 ### Title of the topic
 [0:03:08]
@@ -85,7 +86,8 @@ One short paragraph, only where the bullets cannot carry a chain of reasoning,
 a worked example or a definition that needs its context.
 
 Rules for the blocks:
-- The title names the specific content in three to eight words. Never
+- The title names the specific content in three to eight words, in sentence
+  case: a capital only on the first word and on proper names. Never
   "Introduction", "Discussion" or "Overview". If the speaker returns to a
   topic that already has a block, use exactly the same title again: blocks
   with the same title are joined, each part keeping its own time marker.
@@ -113,7 +115,9 @@ no introduction, no conclusion.
 The text is machine-transcribed, so some words are wrong and there may be no
 punctuation. Read through that and write about the subject matter. **Never
 comment on the transcription, list misrecognised words, or discuss the quality
-of the text.** If a passage is beyond understanding, skip it silently.
+of the text.** A word that is not an English word is a recognition error:
+leave it out, never explain it or guess a meaning for it. If a passage is
+beyond understanding, skip it silently.
 
 {names}{prior}TRANSCRIPT PART:
 {chunk}""",
@@ -145,10 +149,10 @@ Write in {out_lang}, in markdown, with these sections and nothing else:
 Four to six sentences on what this was about and where it ended up.
 
 ## Key concepts
-Every distinct concept, term, name or claim that matters, each with a one-line
-explanation in the speaker's own terms. This is a complete list, not a
-selection. No places, no dates, no everyday words with a dictionary
-definition; each entry once.
+Five to ten entries: only the terms, names and claims specific to this
+recording that a reader would need explained, each with a one-line
+explanation in the speaker's own terms. Never an everyday word with a
+dictionary definition, never a place or a date, never an entry twice.
 
 {followups}Base it only on what is below. Do not invent examples or citations. Keep
 technical terms in their original form where translating them would lose
@@ -183,8 +187,10 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
 pastraipa.
 
 Paversk šią dalį konspektu, kurį galima sekti be įrašo. Dirbk tema po temos:
-pradėk naują bloką kaskart, kai keičiasi tema, paprastai kas vieną–keturias
-kalbos minutes. Kiekvienas blokas yra tiksliai tokios formos:
+po vieną bloką kiekvienai atskirai temai, kad ir kaip trumpai ji buvo
+paliesta. Tema, kuriai teko du sakiniai, gauna bloką su vienu ar dviem
+punktais; žinių apžvalga ar greitas kelių dalykų išvardijimas gauna po bloką
+kiekvienam. Kiekvienas blokas yra tiksliai tokios formos:
 
 ### Temos pavadinimas
 [0:03:08]
@@ -194,8 +200,9 @@ Viena trumpa pastraipa, tik ten, kur punktai negali perteikti argumentų
 grandinės, išspręsto pavyzdžio ar apibrėžimo, kuriam reikia konteksto.
 
 Blokų taisyklės:
-- Pavadinimas įvardija konkretų turinį trimis–aštuoniais žodžiais. Niekada
-  „Įžanga“, „Aptarimas“ ar „Apžvalga“. Jei kalbėtojas grįžta prie temos, kuri
+- Pavadinimas įvardija konkretų turinį trimis–aštuoniais žodžiais, rašomas
+  kaip sakinys: didžioji raidė tik pirmame žodyje ir tikriniuose varduose.
+  Niekada „Įžanga“, „Aptarimas“ ar „Apžvalga“. Jei kalbėtojas grįžta prie temos, kuri
   jau turi bloką, naudok tiksliai tą patį pavadinimą: vienodai pavadinti blokai
   sujungiami, kiekviena dalis išlaiko savo laiko žymą.
 - Antra eilutė yra laiko žyma, nuo kurios tema prasideda, nukopijuota
@@ -221,7 +228,9 @@ medžiagą. Išvesk tik blokus, be antraštės virš jų, be įžangos, be išva
 Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
 skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada
 nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir
-nekomentuok teksto kokybės.** Nesuprantamas vietas tiesiog praleisk.
+nekomentuok teksto kokybės.** Žodis, kurio lietuvių kalboje nėra, yra
+atpažinimo klaida: praleisk jį, niekada jo neaiškink ir nespėliok reikšmės.
+Nesuprantamas vietas tiesiog praleisk.
 
 {names}{prior}TRANSKRIPCIJOS DALIS:
 {chunk}""",
@@ -253,10 +262,10 @@ Rašyk lietuvių kalba, markdown formatu, su šiais skyriais ir nieko daugiau:
 Keturi–šeši sakiniai apie tai, apie ką buvo kalbama ir prie ko prieita.
 
 ## Pagrindinės sąvokos
-Kiekviena svarbi sąvoka, terminas, vardas ar teiginys su vienos eilutės
-paaiškinimu kalbėtojo žodžiais. Tai pilnas sąrašas, ne atranka. Ne vietovės,
-ne datos, ne kasdieniai žodžiai su žodyno apibrėžimu; kiekvienas įrašas tik
-vieną kartą.
+Nuo penkių iki dešimties įrašų: tik šiam įrašui būdingi terminai, vardai ir
+teiginiai, kuriuos skaitytojui reikėtų paaiškinti, kiekvienas su vienos
+eilutės paaiškinimu kalbėtojo žodžiais. Niekada kasdienis žodis su žodyno
+apibrėžimu, niekada vietovė ar data, niekada tas pats įrašas du kartus.
 
 {followups}Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus,
 kurių vertimas prarastų prasmę, palik originalia forma. Rašyk gryną markdown.
