@@ -22,6 +22,15 @@ import rawnote
 import timetable
 
 
+def say(*a):
+    """print() that survives pythonw, where sys.stdout is None."""
+    if sys.stdout is not None:
+        try:
+            print(*a, flush=True)
+        except Exception:
+            pass
+
+
 def read_config(path):
     """config.sh is shell, but only ever KEY="value". Parse rather than source,
     so this works where there is no shell."""
@@ -53,7 +62,7 @@ def main():
         # something is already recording: ask it to finish
         STOP.touch()
         ps.notify("Transcription stopped", "Writing the last chunk.")
-        print("stopping the recording in progress")
+        say("stopping the recording in progress")
         return 0
 
     STOP.unlink(missing_ok=True)
@@ -105,6 +114,7 @@ def main():
             audio_link=audio_link), encoding="utf-8")
 
     env = dict(os.environ,
+               LECTURE_STOP_FILE=str(STOP),
                LECTURE_MODEL=cfg.get("LECTURE_MODEL", "small.en"),
                LECTURE_LANGUAGE=cfg.get("LECTURE_LANGUAGE", "en"),
                LECTURE_BACKEND=cfg.get("LECTURE_BACKEND", "cpu"),
@@ -117,7 +127,7 @@ def main():
     worker = ps.inhibit_wrapper() + worker          # empty except on Linux
 
     ps.notify(f"Recording {label}", note.name)
-    print(f"recording {label}\n  transcript {note}\n  your notes {mynotes}")
+    say(f"recording {label}\n  transcript {note}\n  your notes {mynotes}")
 
     # Linux gets the tray dot; Windows and macOS get a window, because trays
     # are hidden by default there and a recording you cannot see is a recording
@@ -125,29 +135,41 @@ def main():
     indicator = "indicator.py" if ps.LINUX else "recording_window.py"
     tray = None
     try:
-        tray = subprocess.Popen([py, str(HERE / indicator), label, str(STOP)],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        tray = subprocess.Popen([ps.venv_pythonw(HERE / "venv"), str(HERE / indicator),
+                                 label, str(STOP)],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                **ps.quiet_popen_kwargs())
     except Exception:
         pass
 
     with ps.KeepAwake():                            # no-op on Linux, systemd-inhibit covers it
-        proc = subprocess.Popen(worker, env=env)
+        proc = subprocess.Popen(worker, env=env, **ps.quiet_popen_kwargs())
         try:
             while proc.poll() is None:
-                if STOP.exists():
-                    proc.terminate()
-                    break
                 time.sleep(0.5)
-            proc.wait(timeout=120)
+                if STOP.exists():
+                    # The worker sees the same file and shuts down on its own:
+                    # it transcribes the last window, converts the audio and
+                    # fills in the End time. Killing it here would lose all of
+                    # that, which is exactly what TerminateProcess did on
+                    # Windows. Only if it fails to finish do we force it.
+                    try:
+                        proc.wait(timeout=180)
+                    except subprocess.TimeoutExpired:
+                        proc.terminate()
+                    break
         except KeyboardInterrupt:
-            proc.terminate()
-            proc.wait(timeout=120)
+            STOP.touch()
+            try:
+                proc.wait(timeout=180)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
 
     if tray:
         tray.terminate()
     STOP.unlink(missing_ok=True)
     lock.release()
-    print("stopped")
+    say("stopped")
 
     # On a machine doing both halves, the accurate pass runs here and now: the
     # live transcript saw twelve seconds at a time, this one sees the whole
@@ -155,7 +177,8 @@ def main():
     # it, and finish.py leaves everything in place if it is cancelled, so
     # resume.py can offer it again.
     if cfg.get("WANT_PROCESS") == "1" and cfg.get("WANT_CAPTURE") == "1":
-        subprocess.Popen([py, str(HERE / "finish.py"), stamp])
+        subprocess.Popen([ps.venv_pythonw(HERE / "venv"), str(HERE / "finish.py"), stamp],
+                         **ps.quiet_popen_kwargs())
     return 0
 
 

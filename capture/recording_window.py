@@ -19,7 +19,7 @@ import platform_support as ps
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QPainter, QPixmap
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout,
-                             QLabel, QPushButton)
+                             QLabel, QPushButton, QProgressBar)
 
 
 def dot(colour, size=18):
@@ -65,9 +65,15 @@ class RecordingWindow(QWidget):
         self.hint.setStyleSheet("color: palette(mid);")
         lay.addWidget(self.hint)
 
-        stop = QPushButton("Stop recording")
-        stop.clicked.connect(self.stop)
-        lay.addWidget(stop)
+        self.bar = QProgressBar()
+        self.bar.setRange(0, 0)                  # indeterminate
+        self.bar.hide()
+        lay.addWidget(self.bar)
+
+        self.stop_btn = QPushButton("Stop recording")
+        self.stop_btn.clicked.connect(self.stop)
+        lay.addWidget(self.stop_btn)
+        self.finishing = False
 
         t = QTimer(self)
         t.timeout.connect(self.tick)
@@ -75,27 +81,45 @@ class RecordingWindow(QWidget):
         self.timer = t
 
     def tick(self):
+        if self.finishing:
+            # record.py deletes the stop file once the worker has flushed the
+            # last window and converted the audio. Its disappearance is the
+            # signal that everything you said has reached the note.
+            if not self.stop_path.exists():
+                QApplication.quit()
+            return
         self.lit = not self.lit
         self.light.setPixmap(self.on if self.lit else self.off)
         secs = int(time.time() - self.started)
         h, rem = divmod(secs, 3600)
         m, s = divmod(rem, 60)
         self.clock.setText(f"{h:02d}:{m:02d}:{s:02d}")
-        # record.py removes the stop file when it has finished shutting down
         if self.stop_path.exists() and secs > 2:
-            self.title.setText("<b>Finishing…</b>")
+            self.enter_finishing()               # stopped from the shortcut instead
 
     def stop(self):
         self.stop_path.parent.mkdir(parents=True, exist_ok=True)
         self.stop_path.touch()
-        self.title.setText("<b>Finishing…</b>")
-        self.timer.stop()
+        self.enter_finishing()
+
+    def enter_finishing(self):
+        if self.finishing:
+            return
+        self.finishing = True
         self.light.setPixmap(self.off)
-        QTimer.singleShot(1500, QApplication.quit)
+        self.title.setText("<b>Finishing</b>")
+        self.hint.setText("Transcribing the last few seconds and saving the\n"
+                          "audio. This window closes by itself when done.")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("Stopping")
+        self.bar.show()
+        # if record.py never clears the file, do not sit here forever
+        QTimer.singleShot(240_000, QApplication.quit)
 
     def closeEvent(self, e):
         # Closing the window must not silently leave a recording running.
-        self.stop()
+        if not self.finishing:
+            self.stop()
         e.ignore()
 
 
