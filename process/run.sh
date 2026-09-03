@@ -51,7 +51,14 @@ if [ "$free" -lt "$MIN_FREE_MIB" ]; then
   exit 0
 fi
 
-export LECTURE_LANGUAGE LECTURE_NOTE_LANGUAGE LECTURE_ASR_MODEL
+# Everything summarise.py and transcribe.py read from the environment. Sourcing
+# config.sh makes these shell variables; without export the child processes
+# never see them and fall back to their defaults. LECTURE_LLM was missing, so
+# every summary ran on the default model regardless of what was configured.
+export LECTURE_LANGUAGE LECTURE_NOTE_LANGUAGE
+export LECTURE_ASR_MODEL LECTURE_ASR_COMPUTE
+export LECTURE_LLM LECTURE_NUMCTX LECTURE_CHUNK_WORDS
+export LECTURE_REQUEST_DEADLINE LECTURE_MAX_PREDICT
 export TRANSCRIPTIONS_DIR UNIVERSITY_DIR
 
 shopt -s nullglob
