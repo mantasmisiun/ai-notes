@@ -193,6 +193,13 @@ else:
               f"this has {VRAM_MIB} MiB\n")
     ladder += [f"medium{suffix}", f"small{suffix}"]
 
+disabled = {d for d in os.environ.get("LECTURE_DISABLED_MODELS", "").split(",") if d}
+if disabled:
+    skipped = [m for m in ladder if m in disabled]
+    if skipped:
+        print("  skipping, disabled on this machine: " + ", ".join(skipped) + "\n")
+    ladder = [m for m in ladder if m not in disabled]
+
 chosen = None
 for model in ladder:
     for backend, fn in candidates(model):

@@ -51,7 +51,8 @@ UNI     = VAULT / cfg.get("UNIVERSITY_DIR", "University")
 SCRATCH = Path(cfg.get("AUDIO_SCRATCH") or ps.scratch_dir())
 STATE   = ps.state_dir()
 STOP    = STATE / "stop"
-READY   = STATE / "ready"        # touched by the worker once the model is loaded
+READY     = STATE / "ready"        # touched by the worker once the model is loaded
+CAPTURING = STATE / "capturing"    # touched when the first audio byte arrives
 LOCK    = STATE / "record.lock"
 
 
@@ -68,6 +69,7 @@ def main():
 
     STOP.unlink(missing_ok=True)
     READY.unlink(missing_ok=True)
+    CAPTURING.unlink(missing_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d %H%M")
 
     entry = timetable.match(timetable.load(str(UNI)), timetable.parse_stamp(stamp))
@@ -118,6 +120,7 @@ def main():
     env = dict(os.environ,
                LECTURE_STOP_FILE=str(STOP),
                LECTURE_READY_FILE=str(READY),
+               LECTURE_CAPTURING_FILE=str(CAPTURING),
                LECTURE_MODEL=cfg.get("LECTURE_MODEL", "small.en"),
                LECTURE_LANGUAGE=cfg.get("LECTURE_LANGUAGE", "en"),
                LECTURE_BACKEND=cfg.get("LECTURE_BACKEND", "cpu"),
@@ -139,7 +142,7 @@ def main():
     tray = None
     try:
         tray = subprocess.Popen([ps.venv_pythonw(HERE / "venv"), str(HERE / indicator),
-                                 label, str(STOP), str(READY)],
+                                 label, str(STOP), str(READY), str(CAPTURING)],
                                 stdout=open(STATE / "indicator.log", "a"),
                                 stderr=subprocess.STDOUT,
                                 **ps.quiet_popen_kwargs())
@@ -189,6 +192,7 @@ def main():
         tray.terminate()
     STOP.unlink(missing_ok=True)
     READY.unlink(missing_ok=True)
+    CAPTURING.unlink(missing_ok=True)
     lock.release()
     say("stopped")
 

@@ -12,8 +12,9 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
-import cuda_libs; cuda_libs.enable()
-from faster_whisper import WhisperModel
+# faster_whisper and the CUDA libraries are imported inside main(), AFTER the
+# microphone is open. They take seconds to load, and every one of those seconds
+# was audio the user believed was being recorded.
 
 RATE       = 16000
 # Whisper's encoder always processes exactly 30 seconds: a shorter buffer is
@@ -240,6 +241,8 @@ def main():
     import queue
     chunks_q = queue.Queue()
 
+    capturing = os.environ.get("LECTURE_CAPTURING_FILE", "")
+
     def reader():
         first = True
         with open(raw_path, "wb") as raw:
@@ -247,11 +250,19 @@ def main():
                 data = ff.stdout.read(4096)
                 if not data:
                     log("audio source ended")
+                    if first:
+                        # never produced a byte: the cached device is stale
+                        ps.forget_input_device()
                     chunks_q.put(None)
                     return
                 if first:
                     log("first audio received")
                     first = False
+                    if capturing:
+                        try:
+                            Path(capturing).touch()   # the window starts its clock now
+                        except OSError:
+                            pass
                 raw.write(data)
                 raw.flush()
                 chunks_q.put(data)
@@ -262,6 +273,9 @@ def main():
     record_only = MODEL.strip().lower() in ("", "none")
     log(f"model={MODEL!r} backend={BACKEND} device={DEVICE} compute={COMPUTE} "
         f"window={WINDOW_SECS}s interval={INTERVAL_SECS}s language={LANGUAGE}")
+    if not record_only:
+        import cuda_libs; cuda_libs.enable()
+        from faster_whisper import WhisperModel
     if record_only:
         log("record-only mode: no live transcription on this machine")
         append("*Recording audio only: no live transcript on this machine. "

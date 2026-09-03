@@ -35,11 +35,16 @@ def dot(colour, size=18):
 
 
 class RecordingWindow(QWidget):
-    def __init__(self, label, stop_path, ready_path=None):
+    def __init__(self, label, stop_path, ready_path=None, capturing_path=None):
         super().__init__()
         self.stop_path = Path(stop_path)
         self.ready_path = Path(ready_path) if ready_path else None
         self.ready = self.ready_path is None
+        self.capturing_path = Path(capturing_path) if capturing_path else None
+        # The clock must not run before audio is actually being captured. It
+        # did, and the user's first sentence fell into the gap it was hiding.
+        self.capturing = self.capturing_path is None
+        self.started = time.time() if self.capturing else None
         self.started = time.time()
         self.lit = True
         self.on, self.off = dot("#e01b24"), dot("#5c1b1f")
@@ -64,8 +69,7 @@ class RecordingWindow(QWidget):
 
         # Capture starts at once; the model takes a few seconds longer. Say
         # so, or the first sentence looks lost when it is only not yet shown.
-        self.hint = QLabel("Recording. Transcription is starting up,\n"
-                           "the first words appear in a few seconds.")
+        self.hint = QLabel("Starting the microphone.")
         self.hint.setStyleSheet("color: palette(mid);")
         lay.addWidget(self.hint)
 
@@ -85,6 +89,11 @@ class RecordingWindow(QWidget):
         self.timer = t
 
     def tick(self):
+        if not self.capturing and self.capturing_path and self.capturing_path.exists():
+            self.capturing = True
+            self.started = time.time()
+            self.hint.setText("Recording. Transcription is starting up,\n"
+                              "the first words appear in a few seconds.")
         if not self.ready and self.ready_path and self.ready_path.exists():
             self.ready = True
             self.hint.setText("Write in your raw note, not in the transcript.\n"
@@ -95,6 +104,10 @@ class RecordingWindow(QWidget):
             # signal that everything you said has reached the note.
             if not self.stop_path.exists():
                 QApplication.quit()
+            return
+        if not self.capturing:
+            self.light.setPixmap(self.off)      # dark until audio flows
+            self.clock.setText("--:--:--")
             return
         self.lit = not self.lit
         self.light.setPixmap(self.on if self.lit else self.off)
@@ -135,8 +148,9 @@ def main():
     label = sys.argv[1] if len(sys.argv) > 1 else ""
     stop_path = sys.argv[2] if len(sys.argv) > 2 else str(ps.state_dir() / "stop")
     ready_path = sys.argv[3] if len(sys.argv) > 3 else None
+    capturing_path = sys.argv[4] if len(sys.argv) > 4 else None
     app = QApplication(sys.argv)
-    w = RecordingWindow(label, stop_path, ready_path)
+    w = RecordingWindow(label, stop_path, ready_path, capturing_path)
     w.show()
     return app.exec()
 
