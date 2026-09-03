@@ -45,7 +45,7 @@ LECTURE_NOTE_LANGUAGE="en"
 LECTURE_MODEL="small.en"
 LECTURE_ASR_MODEL="large-v3"
 LECTURE_ASR_COMPUTE="float16"
-LECTURE_LLM="llama3.1:8b"
+LECTURE_LLM="qwen3:8b"
 ```
 
 ### Capture
@@ -72,7 +72,7 @@ always reaches the first one.
 python -m venv process\venv
 process\venv\Scripts\pip install faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12
 process\venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', device='cuda', compute_type='float16')"
-ollama pull llama3.1:8b
+ollama pull qwen3:8b
 ```
 
 Set Ollama to release the GPU between runs, or transcription will never find
