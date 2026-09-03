@@ -58,9 +58,13 @@ def benchmark(model, cfg):
                MIN_LIVE_FACTOR=os.environ.get("MIN_LIVE_FACTOR", "1.2"))
     py = ps.venv_python(ROOT / "capture" / "venv")
     result = None
+    # whisper.cpp, when the installer built it, lets the benchmark measure the
+    # model on Vulkan as well; without this the switcher only ever saw the CPU
+    wcpp = ROOT / "capture" / "whisper.cpp"
+    wcpp_arg = str(wcpp) if (wcpp / "build" / "bin" / "whisper-cli").is_file() else ""
     with subprocess.Popen([py, str(ROOT / "lib" / "benchmark.py"),
                            cfg.get("LECTURE_LANGUAGE", "en"), str(ROOT / "samples"),
-                           str(ROOT / ".bench")],
+                           str(ROOT / ".bench"), wcpp_arg],
                           env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                           text=True, encoding="utf-8", errors="replace") as p:
         for line in p.stdout:

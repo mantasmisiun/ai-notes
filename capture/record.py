@@ -4,7 +4,7 @@
 Replaces toggle.sh. Stopping works through a file rather than a signal, because
 Windows has no SIGTERM and a stop file behaves identically everywhere.
 """
-import os
+import os, shutil
 import re
 import subprocess
 import sys
@@ -70,6 +70,32 @@ def main():
     STOP.unlink(missing_ok=True)
     READY.unlink(missing_ok=True)
     CAPTURING.unlink(missing_ok=True)
+
+    # Plasma runs a dock launcher inside a systemd unit of its own and, while
+    # that unit is alive, treats the launcher as "running": a click does
+    # nothing, so the icon that started a recording could not stop it, while
+    # the tray icon, which runs this script directly, could. The recording
+    # therefore hands itself to a unit of its own and the launcher's unit ends
+    # at once, so the next click runs this script again and stops it.
+    # OOMPolicy=continue: systemd's default stops the whole unit when the
+    # kernel kills any process in it, which took this script down with the
+    # worker and left the audio unconverted and the note without its footer.
+    # Only when detached from a terminal; run by hand it stays in front.
+    if (ps.LINUX and not os.environ.get("LECTURE_IN_UNIT")
+            and not sys.stdout.isatty() and shutil.which("systemd-run")):
+        lock.release()
+        keep = ("DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS",
+                "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "XDG_DATA_DIRS", "XAUTHORITY",
+                "PATH", "HOME", "LANG", "LC_ALL", "PULSE_SERVER", "QT_QPA_PLATFORMTHEME")
+        passed = [f"--setenv={k}" for k in os.environ
+                  if k in keep or k.startswith("LECTURE_")]
+        unit = "lecture-recording-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        subprocess.run(["systemd-run", "--user", "--quiet", "--collect",
+                        f"--unit={unit}", "--description=Lecture recording",
+                        "-p", "OOMPolicy=continue", "--setenv=LECTURE_IN_UNIT=1",
+                        *passed, "--", sys.executable, *sys.argv])
+        return 0
+
     stamp = datetime.now().strftime("%Y-%m-%d %H%M")
 
     entry = timetable.match(timetable.load(str(UNI)), timetable.parse_stamp(stamp))
