@@ -176,14 +176,27 @@ and then delete.
 Run it once per machine. Each keeps its own `config.sh`, which is gitignored,
 because the vault is rarely at the same path on both.
 
-### Windows
+### Windows, the quick way
 
-The interactive installer is a bash script, so setup is manual here. Everything
-it configures is done by hand instead; the pipeline itself is the same Python.
+Download the repository, either with `git clone` or **Code → Download ZIP** on
+GitHub, then open the `windows` folder and **double-click `install.bat`**.
 
-**None of this has been run on Windows.** It is written from documentation, so
-expect to hit something. Microphone detection is the most likely, since it
-parses ffmpeg's device listing and that output is not a stable interface.
+It checks prerequisites and installs any that are missing, asks three questions,
+builds the environment, fetches the model, and puts a **Record lecture**
+shortcut on your Desktop. Double-click that to start, double-click again to
+stop; a red dot sits in the system tray while it records.
+
+If it installs prerequisites it will ask you to close PowerShell and run it
+once more, because a running shell does not see a newly installed program.
+
+**None of the Windows support has been run end to end.** Two real bugs were
+found the first time anyone tried it, so expect a third. Every command below is
+what the installer does, in case you would rather see it or something fails
+partway.
+
+### Windows, by hand
+
+All commands run from the repository root.
 
 In PowerShell:
 
