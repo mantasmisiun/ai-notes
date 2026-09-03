@@ -273,15 +273,15 @@ os.makedirs(dest_dir, exist_ok=True)
 out = os.path.join(dest_dir, fname)
 tmp = out + ".tmp"
 
-rel_transcript = os.path.relpath(transcript, VAULT)[:-3]        # drop .md
+rel_transcript = os.path.relpath(transcript, VAULT)[:-3].replace(os.sep, "/")        # drop .md
 audio = None
 for ext in (".ogg", ".mp3", ".m4a", ".wav"):
     p = os.path.join(NOTES, "audio", stamp + ext)
     if os.path.exists(p):
-        audio = os.path.relpath(p, VAULT)
+        audio = os.path.relpath(p, VAULT).replace(os.sep, "/")
         break
 
-raw_link = f"{os.path.basename(NOTES)}/raw notes/{stamp}"
+raw_link = f"{os.path.basename(NOTES)}/raw notes/{stamp}"   # already forward slashes
 
 with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
@@ -319,14 +319,14 @@ if area and subject:
                 start_s[1] if len(start_s) > 1 else f"{when:%H:%M}",
                 end_s[1] if len(end_s) > 1 else "",
                 kind,
-                os.path.relpath(out, VAULT)[:-3])
+                os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/"))
     except Exception as e:
         print(f"  could not update the timetable: {e}")
 
 # link the raw note back to the session it produced
 try:
     if os.path.exists(raw_path):
-        rel_out = os.path.relpath(out, VAULT)[:-3]
+        rel_out = os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/")
         text = open(raw_path, encoding="utf-8").read()
         if rel_out not in text:
             marker = "\n---\n"
