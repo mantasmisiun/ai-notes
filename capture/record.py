@@ -137,13 +137,23 @@ def main():
     try:
         tray = subprocess.Popen([ps.venv_pythonw(HERE / "venv"), str(HERE / indicator),
                                  label, str(STOP)],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                stdout=open(STATE / "indicator.log", "a"),
+                                stderr=subprocess.STDOUT,
                                 **ps.quiet_popen_kwargs())
     except Exception:
         pass
 
     with ps.KeepAwake():                            # no-op on Linux, systemd-inhibit covers it
-        proc = subprocess.Popen(worker, env=env, **ps.quiet_popen_kwargs())
+        # Launched from a shortcut there is no console, so a worker that dies on
+        # its first line would vanish without a trace and the window would
+        # simply close. Its output goes to a log instead, and the exit code is
+        # reported when it ends early.
+        STATE.mkdir(parents=True, exist_ok=True)
+        wlog = open(STATE / "worker.log", "a", encoding="utf-8", errors="replace")
+        wlog.write(f"\n=== {datetime.now():%Y-%m-%d %H:%M:%S} {stamp} ===\n")
+        wlog.flush()
+        proc = subprocess.Popen(worker, env=env, stdout=wlog, stderr=subprocess.STDOUT,
+                                **ps.quiet_popen_kwargs())
         try:
             while proc.poll() is None:
                 time.sleep(0.5)
@@ -165,6 +175,13 @@ def main():
             except subprocess.TimeoutExpired:
                 proc.terminate()
 
+    wlog.close()
+    if proc.returncode not in (0, None) and not STOP.exists():
+        # It ended without being asked to. Say so where it can be seen.
+        ps.notify("Recording failed",
+                  f"The worker exited with code {proc.returncode}. "
+                  f"See {STATE / 'worker.log'}")
+        say(f"worker exited with code {proc.returncode}; see {STATE / 'worker.log'}")
     if tray:
         tray.terminate()
     STOP.unlink(missing_ok=True)
