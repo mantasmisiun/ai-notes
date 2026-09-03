@@ -21,22 +21,23 @@ def vault_link(path, vault):
     return rel.replace(os.sep, "/")
 
 
-FIELDS = ["Schedule", "Area", "Subject", "Start", "End", "Type"]
+# fillable rows first, the two the pipeline fills last
+FIELDS = ["Schedule", "Area", "Subject", "Type", "Start", "End"]
+NOTES_HEADING = "## Your notes"
 GENERATED_MARK = "generated: lecture-pipeline"
 
 
 def render(stamp, start, area="", subject="", kind="", end="",
-           schedule="", transcript_link="", audio_link=""):
+           schedule="", live_link="", transcript_link="", summary_link=""):
+    """Three parts and nothing else: one line saying what to fill in, the
+    table, the links the pipeline fills, then the heading you write under."""
     rows = {"Schedule": schedule, "Area": area, "Subject": subject,
-            "Start": start, "End": end, "Type": kind}
+            "Type": kind, "Start": start, "End": end}
     table = "| Field | Value |\n| --- | --- |\n" + "".join(
         f"| {f} | {rows[f]} |\n" for f in FIELDS)
 
-    links = ""
-    if transcript_link:
-        links += f"Transcript: [[{transcript_link}]]\n"
-    if audio_link:
-        links += f"\n![[{audio_link}]]\n"
+    def link(target):
+        return f"[[{target}]]" if target else ""
 
     return (
         "---\n"
@@ -44,17 +45,14 @@ def render(stamp, start, area="", subject="", kind="", end="",
         "type: raw-note\n"
         "---\n\n"
         f"# {stamp}\n\n"
-        "**Do one of these two things, or this stays in unfiled.**\n\n"
-        "1. Link an existing schedule: start typing `[[` in the Schedule cell\n"
-        "   and pick it from the list. Where that schedule lives decides\n"
-        "   where this session is filed.\n"
-        "2. Or fill in Area, Subject and Type yourself, and the folders are\n"
-        "   created for you, with a schedule to link next time.\n\n"
-        "Those three also tell the summariser what this recording is, so an\n"
-        "interview or a review is not written up as though it were a lecture.\n\n"
+        "**Link a Schedule, or fill in Area, Subject and Type. One or the other,**\n"
+        "**or this session stays in unfiled.**\n\n"
         f"{table}\n"
-        f"{links}\n"
-        "---\n\n")
+        f"Live: {link(live_link)}\n"
+        f"Transcript: {link(transcript_link)}\n"
+        f"Summary: {link(summary_link)}\n\n"
+        "---\n\n"
+        f"{NOTES_HEADING}\n\n")
 
 
 def parse(path):
@@ -73,11 +71,32 @@ def parse(path):
 
 def body(path):
     """Everything written below the final separator, which is where the
-    template invites you to write. Empty for an untouched note."""
+    template invites you to write, without the heading. Empty for an
+    untouched note."""
     text = Path(path).read_text(encoding="utf-8")
     text = re.sub(r"^---.*?---\n", "", text, flags=re.S)     # frontmatter
     parts = re.split(r"^---\s*$", text, flags=re.M)
-    return parts[-1].strip() if len(parts) > 1 else ""
+    if len(parts) < 2:
+        return ""
+    own = parts[-1].strip()
+    if own.startswith(NOTES_HEADING):
+        own = own[len(NOTES_HEADING):].strip()
+    return own
+
+
+def set_link(path, label, target):
+    """Fill one of the link lines, Live / Transcript / Summary, in place. A
+    note from before the template had that line gets it inserted above the
+    separator instead."""
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+    line = f"{label}: [[{target}]]"
+    if re.search(rf"^{label}:.*$", text, flags=re.M):
+        text = re.sub(rf"^{label}:.*$", line, text, count=1, flags=re.M)
+    else:
+        i = text.find("\n---\n")
+        text = text[:i] + f"\n{line}\n" + text[i:] if i >= 0 else text + f"\n{line}\n"
+    p.write_text(text, encoding="utf-8")
 
 
 def set_field(path, field, value):
