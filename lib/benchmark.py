@@ -120,7 +120,7 @@ if mode == "fetch":                                    # download only, untimed
 t0 = time.perf_counter()
 # the same call the live worker makes: word timestamps cost real time and
 # the interval promised to the user must be measured with them on
-segs, _ = m.transcribe(wav, language=lang, vad_filter=True,
+segs, _ = m.transcribe(wav, language=lang, vad_filter=True, beam_size=1,
                        condition_on_previous_text=False, word_timestamps=True)
 words = sum(len(s.text.split()) for s in segs)         # forces the generator
 print(json.dumps({"elapsed": time.perf_counter() - t0, "words": words}))
