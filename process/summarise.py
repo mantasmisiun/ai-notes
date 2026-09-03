@@ -48,7 +48,11 @@ def ask(prompt, predict=None):
     twelve second chunk into a ten minute one.
     """
     opts = {"num_ctx": NUMCTX, "temperature": 0.2,
-            "num_predict": predict or MAX_PREDICT}
+            "num_predict": predict or MAX_PREDICT,
+            # A weak model on a rough transcript falls into repeating a
+            # sentence with the number changed. This discourages it; the
+            # num_predict cap stops it either way.
+            "repeat_penalty": 1.15}
     body = json.dumps({"model": MODEL, "prompt": prompt,
                        "stream": True, "options": opts}).encode()
     req = urllib.request.Request(f"http://{HOST}/api/generate", body,
