@@ -17,17 +17,20 @@ HEAP_SIZE = re.compile(r"size\s+=\s+(\d+)")
 
 def from_nvidia_smi():
     try:
-        r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total",
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,memory.free",
                             "--format=csv,noheader,nounits"],
                            capture_output=True, text=True, timeout=20)
         if r.returncode != 0 or not r.stdout.strip():
             return None
         best = None
         for line in r.stdout.strip().splitlines():
-            name, mib = [x.strip() for x in line.split(",")]
-            mib = int(mib)
-            if best is None or mib > best[2]:
-                best = ("nvidia", name, mib, 1)      # always a discrete card
+            name, total, free = [x.strip() for x in line.split(",")]
+            # Free matters more than total. On a laptop where an integrated GPU
+            # drives the display, the whole discrete card is available, and a
+            # threshold on total size would rule out a card that fits the model.
+            cand = ("nvidia", name, int(free), 1)
+            if best is None or cand[2] > best[2]:
+                best = cand
         return best
     except Exception:
         return None
