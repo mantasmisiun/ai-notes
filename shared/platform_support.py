@@ -61,11 +61,14 @@ def default_input_device():
     if MACOS:
         return ["-f", "avfoundation", "-i", ":0"]
 
+    # ffmpeg writes UTF-8, but text mode decodes with the Windows locale
+    # encoding, which turns a device named "... Intel(R) ..." into mojibake and
+    # then no longer matches any device when passed back. Decode explicitly.
     r = subprocess.run(["ffmpeg", "-hide_banner", "-list_devices", "true",
                         "-f", "dshow", "-i", "dummy"],
-                       capture_output=True, text=True)
+                       capture_output=True, encoding="utf-8", errors="replace")
     name = None
-    for line in r.stderr.splitlines():
+    for line in (r.stderr or "").splitlines():
         if "(audio)" in line and '"' in line:
             name = line.split('"')[1]
             break
