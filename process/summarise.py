@@ -27,54 +27,56 @@ MODEL  = os.environ.get("LECTURE_LLM", "llama3.1:8b")
 # and the note loses whole sections without saying so.
 NUMCTX = int(os.environ.get("LECTURE_NUMCTX", "16384"))
 REQUEST_DEADLINE = int(os.environ.get("LECTURE_REQUEST_DEADLINE", "900"))
+# Detailed notes on a 2500 word chunk need perhaps 1500 tokens. This cap is
+# generous for that and still stops a model that has started looping.
+MAX_PREDICT      = int(os.environ.get("LECTURE_MAX_PREDICT", "4096"))
 WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "2500"))
 SRCLANG   = os.environ.get("LECTURE_LANGUAGE", "en")
 NOTELANG  = os.environ.get("LECTURE_NOTE_LANGUAGE", SRCLANG)
 
 
 def ask(prompt, predict=None):
-    opts = {"num_ctx": NUMCTX, "temperature": 0.2}
-    if predict:
-        opts["num_predict"] = predict
+    """One request to the model, with a deadline that actually stops it.
+
+    Two things matter here. Generation is streamed, because with stream=false
+    abandoning the connection leaves Ollama generating on the GPU indefinitely:
+    a timed-out chunk kept the card pinned and the next attempt queued behind
+    it. Closing a streamed response makes the server stop.
+
+    And every call is capped. Without num_predict a model that starts repeating
+    itself will generate until the context is exhausted, which is what turned a
+    twelve second chunk into a ten minute one.
+    """
+    opts = {"num_ctx": NUMCTX, "temperature": 0.2,
+            "num_predict": predict or MAX_PREDICT}
     body = json.dumps({"model": MODEL, "prompt": prompt,
-                       "stream": False, "options": opts}).encode()
+                       "stream": True, "options": opts}).encode()
     req = urllib.request.Request(f"http://{HOST}/api/generate", body,
                                  {"Content-Type": "application/json"})
-    # urllib's timeout applies to each socket read, not to the whole request, so
-    # a generation that trickles out slowly never trips it and can run for
-    # hours. Enforce a deadline on the call as a whole.
-    box = {}
 
-    def _call():
-        try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                box["value"] = json.load(r)["response"].strip()
-        except BaseException as exc:            # carried back to the caller
-            box["error"] = exc
-
-    t = threading.Thread(target=_call, daemon=True)
-    t.start()
-    t.join(timeout=REQUEST_DEADLINE)
-
+    deadline = time.time() + REQUEST_DEADLINE
+    out = []
     try:
-        if t.is_alive():
-            raise TimeoutError("deadline exceeded")
-        if "error" in box:
-            raise box["error"]
-        return box["value"]
+        with urllib.request.urlopen(req, timeout=120) as r:
+            for line in r:
+                if time.time() > deadline:
+                    r.close()               # the server stops when we go away
+                    raise TimeoutError("deadline exceeded")
+                if not line.strip():
+                    continue
+                chunk = json.loads(line)
+                out.append(chunk.get("response", ""))
+                if chunk.get("done"):
+                    break
     except TimeoutError:
-        # A single chunk taking over fifteen minutes means the model is not
-        # running on the GPU. Ollama does not fail when a model is too large,
-        # it splits it and runs the remainder on the CPU, which is perhaps ten
-        # times slower and looks like the summariser having hung.
         raise SystemExit(
             f"gave up after {REQUEST_DEADLINE // 60} minutes on one chunk with {MODEL}.\n"
-            f"That normally means it does not fit in VRAM and Ollama has put\n"
-            f"part of it on the CPU. Check with:\n"
+            f"The request was cancelled, so the GPU is released.\n"
+            f"If this repeats, the model may not fit. Check with:\n"
             f"  OLLAMA_HOST={HOST} ollama ps\n"
-            f"If PROCESSOR shows any CPU share, choose a smaller model by\n"
-            f"re-running the installer and picking 'Change models only'.\n"
-            f"Lowering LECTURE_NUMCTX in config.sh also frees VRAM.")
+            f"and pick a smaller one by re-running the installer with\n"
+            f"'Change models only', or lower LECTURE_NUMCTX in config.sh.")
+    return "".join(out).strip()
 
 
 def unfence(t):
