@@ -84,14 +84,30 @@ def default_input_device():
     # ffmpeg writes UTF-8, but text mode decodes with the Windows locale
     # encoding, which turns a device named "... Intel(R) ..." into mojibake and
     # then no longer matches any device when passed back. Decode explicitly.
-    r = subprocess.run(["ffmpeg", "-hide_banner", "-list_devices", "true",
-                        "-f", "dshow", "-i", "dummy"],
-                       capture_output=True, encoding="utf-8", errors="replace")
+    # Enumerating DirectShow devices costs a second or two, spent while the
+    # window already shows a running clock. Cache the name; worker.py deletes
+    # the cache if the device produces no audio, forcing a fresh enumeration.
+    cache = state_dir() / "input_device.txt"
     name = None
-    for line in (r.stderr or "").splitlines():
-        if "(audio)" in line and '"' in line:
-            name = line.split('"')[1]
-            break
+    try:
+        if cache.exists():
+            name = cache.read_text(encoding="utf-8").strip() or None
+    except OSError:
+        pass
+    if not name:
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-list_devices", "true",
+                            "-f", "dshow", "-i", "dummy"],
+                           capture_output=True, encoding="utf-8", errors="replace")
+        for line in (r.stderr or "").splitlines():
+            if "(audio)" in line and '"' in line:
+                name = line.split('"')[1]
+                break
+        if name:
+            try:
+                cache.parent.mkdir(parents=True, exist_ok=True)
+                cache.write_text(name, encoding="utf-8")
+            except OSError:
+                pass
     if not name:
         raise RuntimeError(
             "No DirectShow audio device found. List them with:\n"
@@ -128,6 +144,14 @@ class KeepAwake:
             ctypes.windll.kernel32.SetThreadExecutionState(self.ES_CONTINUOUS)
         elif self._proc:
             self._proc.terminate()
+
+
+def forget_input_device():
+    """Drop the cached microphone name so the next start re-enumerates."""
+    try:
+        (state_dir() / "input_device.txt").unlink()
+    except OSError:
+        pass
 
 
 def inhibit_wrapper(reason="Recording a lecture"):
