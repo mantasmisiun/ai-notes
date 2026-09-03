@@ -141,11 +141,20 @@ def finalise():
 
 
 def main():
-    append(f"*Model `{MODEL}`, {WINDOW_SECS}s window every {INTERVAL_SECS}s. "
-           f"Loading...*\n")
-    model = WhisperModel(MODEL, device="cpu", compute_type=COMPUTE,
-                         cpu_threads=THREADS)
-    append("*ready, recording*\n\n")
+    # "none" means the benchmark found nothing on this machine that keeps up
+    # live, and the user chose to record anyway. Audio is still captured and
+    # converted; the accurate transcript comes later from a machine that can.
+    record_only = MODEL.strip().lower() in ("", "none")
+    if record_only:
+        append("*Recording audio only: no live transcript on this machine. "
+               "The transcript and notes are produced afterwards.*\n\n")
+        model = None
+    else:
+        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}`, "
+               f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
+        model = WhisperModel(MODEL, device="cpu", compute_type=COMPUTE,
+                             cpu_threads=THREADS)
+        append("*ready, recording*\n\n")
 
     # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
     # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
@@ -196,12 +205,12 @@ def main():
                 if len(buf) > win_bytes:
                     buf = buf[-win_bytes:]
 
-                if since_pass >= step_bytes:
+                if model is not None and since_pass >= step_bytes:
                     now = total / (RATE * 2)
                     live.update(model, buf, now - len(buf) / (RATE * 2), now)
                     since_pass = 0
 
-            if buf and since_pass:
+            if model is not None and buf and since_pass:
                 now = total / (RATE * 2)
                 live.update(model, buf, now - len(buf) / (RATE * 2), now)
     finally:

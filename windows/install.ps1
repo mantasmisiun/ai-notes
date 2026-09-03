@@ -223,7 +223,9 @@ $env:LECTURE_FIXED_MODEL = "$ltModel"
 # models to download is many minutes of a blank screen.
 $r = Native "$Root\capture\venv\Scripts\python.exe" @("$Root\lib\benchmark.py", $lang, "$Root\samples", "$Root\.bench")
 $bench = $r.Lines
-$resultLine = $bench | Where-Object { $_ -like "RESULT *" } | Select-Object -Last 1
+# The result line is tab-separated, so a wildcard with a space after RESULT
+# never matched it. That silently turned every measured model into "none".
+$resultLine = $bench | Where-Object { $_ -match "^RESULT`t" } | Select-Object -Last 1
 $result = if ($resultLine) { "$resultLine" } else { "" }
 
 $liveModel = ""; $chunkSecs = 12
