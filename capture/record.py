@@ -142,6 +142,14 @@ def main():
     STOP.unlink(missing_ok=True)
     lock.release()
     print("stopped")
+
+    # On a machine doing both halves, the accurate pass runs here and now: the
+    # live transcript saw twelve seconds at a time, this one sees the whole
+    # file. The lock is released first so a new recording is never blocked by
+    # it, and finish.py leaves everything in place if it is cancelled, so
+    # resume.py can offer it again.
+    if cfg.get("WANT_PROCESS") == "1" and cfg.get("WANT_CAPTURE") == "1":
+        subprocess.Popen([py, str(HERE / "finish.py"), stamp])
     return 0
 
 

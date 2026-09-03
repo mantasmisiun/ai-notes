@@ -29,6 +29,19 @@ print(f"{sys.argv[1]} ready")
 MODELDL
   fi
 
+  # Ask at login about anything a closed lid or a shutdown interrupted.
+  if [ "${WANT_PROCESS:-0}" = "1" ]; then
+    mkdir -p "$HOME/.config/autostart"
+    cat > "$HOME/.config/autostart/ai-notes-resume.desktop" <<AUTOSTART
+[Desktop Entry]
+Type=Application
+Name=Finish lecture transcriptions
+Exec=$(ps_python) $DIR/resume.py
+Terminal=false
+X-GNOME-Autostart-Delay=20
+AUTOSTART
+  fi
+
   mkdir -p "$HOME/.local/share/applications"
   sed "s|^Exec=.*|Exec=$(ps_python) $DIR/record.py|" "$DIR/lecture-transcribe.desktop" \
     > "$HOME/.local/share/applications/lecture-transcribe.desktop"
