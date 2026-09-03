@@ -221,6 +221,12 @@ elif [ "$want_capture" = 1 ]; then
 
   say "--- preparing to benchmark this machine ---"
   BUILD_VULKAN=$build_vulkan HAS_CUDA=$HAS_CUDA "$ROOT/capture/install.sh" --prereqs
+  # whisper.cpp exists only now, so the Lithuanian model's GGML twin is made
+  # here; without it Vulkan was never measured for Lithuanian
+  if [ "$build_vulkan" = 1 ] && [ -n "$LT_MODEL" ]; then
+    python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" --wcpp "$ROOT/capture/whisper.cpp" 2>&1 | tail -1 >/dev/null
+    [ -f "$ROOT/capture/whisper.cpp/models/ggml-paprika-whisper-lt.bin" ] && say "  Lithuanian model ready for Vulkan too"
+  fi
   say
 
   wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"

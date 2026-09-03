@@ -138,9 +138,15 @@ class WhisperCppBackend:
 
     def __init__(self, scratch):
         self.cli  = WCPP / "build" / "bin" / "whisper-cli"
-        self.ggml = WCPP / "models" / f"ggml-{MODEL}.bin"
+        # a converted directory such as paprika-whisper-lt-ct2 has its GGML
+        # twin beside whisper.cpp's other models, ggml-paprika-whisper-lt.bin
+        name = os.path.basename(MODEL.rstrip("/")) if os.path.isdir(MODEL) else MODEL
+        name = name[:-4] if name.endswith("-ct2") else name
+        self.ggml = WCPP / "models" / f"ggml-{name}.bin"
         if not self.cli.is_file():
             raise FileNotFoundError(f"{self.cli} is not built")
+        if not self.ggml.is_file() and os.path.isdir(MODEL):
+            raise FileNotFoundError(f"{self.ggml} was not converted")
         if not self.ggml.is_file():
             log(f"fetching {self.ggml.name} for whisper.cpp")
             subprocess.run(["sh", str(WCPP / "models" / "download-ggml-model.sh"), MODEL],
