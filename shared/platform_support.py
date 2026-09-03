@@ -47,6 +47,26 @@ def venv_python(venv_dir):
     return str(exe) if exe.exists() else sys.executable
 
 
+def venv_pythonw(venv_dir):
+    """The console-less interpreter on Windows, so a GUI launched from a
+    shortcut does not drag a black cmd window along with it. Elsewhere the
+    ordinary interpreter, which has no such distinction."""
+    exe = venv_python(venv_dir)
+    if WINDOWS and exe.lower().endswith("python.exe"):
+        w = Path(exe[:-len("python.exe")] + "pythonw.exe")
+        if w.exists():
+            return str(w)
+    return exe
+
+
+def quiet_popen_kwargs():
+    """Extra Popen arguments so a child process opens no console window.
+    Only Windows creates one per child; the flag does not exist elsewhere."""
+    if WINDOWS:
+        return {"creationflags": subprocess.CREATE_NO_WINDOW}
+    return {}
+
+
 # --- microphone capture -----------------------------------------------------
 
 def default_input_device():

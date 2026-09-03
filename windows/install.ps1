@@ -244,27 +244,28 @@ foreach ($d in @("live", "transcripts", "audio", "unfiled", "raw notes")) {
 }
 New-Item -ItemType Directory -Force "$vault\University" | Out-Null
 
-$launcher = "$Root\windows\record.bat"
-@"
-@echo off
-cd /d "%~dp0.."
-capture\venv\Scripts\pythonw.exe capture\record.py
-"@ | Set-Content -Encoding ASCII $launcher
-
+# The shortcut points straight at the console-less interpreter. A .bat in
+# between opened a cmd window that sat there for the whole recording, and the
+# worker and ffmpeg each opened one more; those are suppressed in record.py.
+$pyw = "$Root\capture\venv\Scripts\pythonw.exe"
 $ws = New-Object -ComObject WScript.Shell
-$lnk = $ws.CreateShortcut("$HOME\Desktop\Record lecture.lnk")
-$lnk.TargetPath = $launcher
+$lnk = $ws.CreateShortcut("$HOME\Desktop\Transcribe.lnk")
+$lnk.TargetPath = $pyw
+$lnk.Arguments = "`"$Root\capture\record.py`""
 $lnk.WorkingDirectory = $Root
+$lnk.IconLocation = "$Root\windows\transcribe.ico,0"
 $lnk.Description = "Start or stop a lecture recording"
 $lnk.Save()
-Say "  shortcut on your Desktop: Record lecture"
+Remove-Item "$HOME\Desktop\Record lecture.lnk" -ErrorAction SilentlyContinue
+Remove-Item "$Root\windows\record.bat" -ErrorAction SilentlyContinue
+Say "  shortcut on your Desktop: Transcribe"
 
 Write-Host ""
 Write-Host "================================================================"
 Write-Host ""
-Say "To record: double-click 'Record lecture' on your Desktop."
-Say "A red dot appears in the system tray while it is recording."
-Say "Double-click the same shortcut again to stop."
+Say "To record: double-click 'Transcribe' on your Desktop."
+Say "A window with a flashing red light stays on top while it records."
+Say "Press Stop recording, or double-click the shortcut again."
 Say ""
 Say "Transcript and your notes appear in:"
 Say "  $vault\Transcriptions\live"

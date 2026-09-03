@@ -35,9 +35,20 @@ raw_path  = sys.argv[2]   # scratch .pcm, outside the vault
 ogg_path  = sys.argv[3]   # final .ogg, inside the vault
 vault     = sys.argv[4]   # vault root, to build the embed link
 
+_quiet = dict                 # replaced once the platform layer is imported
 stop = threading.Event()
 signal.signal(signal.SIGTERM, lambda *_: stop.set())
 signal.signal(signal.SIGINT,  lambda *_: stop.set())
+
+# On Windows a parent cannot deliver SIGTERM: Popen.terminate() there is an
+# instant kill that runs no handler, so the last window was never flushed and
+# the audio never converted. The stop request therefore arrives as a file, which
+# works identically everywhere, and the signal handlers stay for Linux.
+STOP_FILE = os.environ.get("LECTURE_STOP_FILE", "")
+
+
+def stop_requested():
+    return stop.is_set() or (STOP_FILE and os.path.exists(STOP_FILE))
 
 
 def append(text):
@@ -103,7 +114,7 @@ def finalise():
         ["ffmpeg", "-loglevel", "error", "-y",
          "-f", "s16le", "-ar", str(RATE), "-ac", "1", "-i", raw_path,
          "-c:a", "libopus", "-b:a", BITRATE, ogg_path],
-        capture_output=True)
+        capture_output=True, **_quiet())
     # The recording length is known precisely here, so the End cell is filled
     # in rather than left for you to type and mistype.
     try:
@@ -139,18 +150,23 @@ def main():
     # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
     # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
     # avfoundation on macOS, a named DirectShow device on Windows.
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+    import platform_support as ps
+    global _quiet
+    _quiet = ps.quiet_popen_kwargs
     if os.environ.get("LECTURE_INPUT"):
         src = os.environ["LECTURE_INPUT"].split(":", 1)
-        source = ["-f", src[0], "-i", src[1]]
+        # -re makes a synthetic source play at real time. Without it lavfi
+        # generates as fast as it can, so a "25 second" test consumes the whole
+        # source in seconds and never exercises the stop path at all.
+        source = (["-re"] if src[0] == "lavfi" else []) + ["-f", src[0], "-i", src[1]]
     else:
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
-        import platform_support as ps
         source = ps.default_input_device()
 
     ff = subprocess.Popen(
         ["ffmpeg", "-loglevel", "error"] + source +
         ["-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
-        stdout=subprocess.PIPE)
+        stdout=subprocess.PIPE, **_quiet())
 
     # Everything record.py wrote stays as the header; the body below it is
     # rewritten each pass, because the tail of a rolling window can change.
@@ -165,7 +181,7 @@ def main():
 
     try:
         with open(raw_path, "wb") as raw:
-            while not stop.is_set():
+            while not stop_requested():
                 data = ff.stdout.read(4096)
                 if not data:
                     live.write("\n\n*Audio source ended unexpectedly.*")
