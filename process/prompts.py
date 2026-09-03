@@ -86,7 +86,9 @@ a worked example or a definition that needs its context.
 
 Rules for the blocks:
 - The title names the specific content in three to eight words. Never
-  "Introduction", "Discussion" or "Overview".
+  "Introduction", "Discussion" or "Overview". If the speaker returns to a
+  topic that already has a block, use exactly the same title again: blocks
+  with the same title are joined, each part keeping its own time marker.
 - The second line is the time marker where the topic starts, copied exactly
   from the transcript. Never invent one; use the nearest marker before the
   topic.
@@ -192,7 +194,9 @@ grandinės, išspręsto pavyzdžio ar apibrėžimo, kuriam reikia konteksto.
 
 Blokų taisyklės:
 - Pavadinimas įvardija konkretų turinį trimis–aštuoniais žodžiais. Niekada
-  „Įžanga“, „Aptarimas“ ar „Apžvalga“.
+  „Įžanga“, „Aptarimas“ ar „Apžvalga“. Jei kalbėtojas grįžta prie temos, kuri
+  jau turi bloką, naudok tiksliai tą patį pavadinimą: vienodai pavadinti blokai
+  sujungiami, kiekviena dalis išlaiko savo laiko žymą.
 - Antra eilutė yra laiko žyma, nuo kurios tema prasideda, nukopijuota
   tiksliai iš transkripcijos. Niekada nekurk jos pats; naudok artimiausią
   prieš temą esančią.

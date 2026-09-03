@@ -248,6 +248,25 @@ def extract_names(text, seen=None):
     return seen
 
 
+def merge_blocks(detail):
+    """Blocks with the same title are the same topic, returned to later, so
+    they become one block: the first keeps the title and its time link, each
+    later one adds its points under its own time link, which is where the
+    reader clicks to hear that part."""
+    parts = re.split(r"^(?=### )", detail, flags=re.M)
+    head, blocks, index = parts[0], [], {}
+    for p in parts[1:]:
+        lines = p.rstrip("\n").splitlines()
+        title, body = lines[0], "\n".join(lines[1:]).strip("\n")
+        key = " ".join(re.sub(r"[^\w\s]", "", title[4:].lower()).split())
+        if key in index:
+            blocks[index[key]][1] += "\n\n" + body
+        else:
+            index[key] = len(blocks)
+            blocks.append([title, body])
+    return head + "\n\n".join(f"{t}\n{b}" for t, b in blocks) + "\n"
+
+
 def split_off(note, heading):
     """Remove one ## section from the model's output and return (rest, section),
     so Open questions can sit after the detail rather than before it."""
@@ -427,7 +446,7 @@ for (start, end, c), notes in zip(parts, summaries):
     # of the recording
     convert = linker(re.findall(r"\[(\d{1,2}:\d\d:\d\d)\]", c), rel_transcript)
     detail.append(convert(with_time_lines(notes.strip(), start)))
-note = top.rstrip() + "\n\n" + "\n\n".join(detail)
+note = top.rstrip() + "\n\n" + merge_blocks("\n\n".join(detail)).rstrip()
 if open_q:
     note += "\n\n" + open_q
 
