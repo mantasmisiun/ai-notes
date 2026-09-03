@@ -117,12 +117,16 @@ def main():
     ps.notify(f"Recording {label}", note.name)
     print(f"recording {label}\n  transcript {note}\n  your notes {mynotes}")
 
+    # Linux gets the tray dot; Windows and macOS get a window, because trays
+    # are hidden by default there and a recording you cannot see is a recording
+    # you forget to stop. Neither failing may prevent a recording.
+    indicator = "indicator.py" if ps.LINUX else "recording_window.py"
     tray = None
     try:
-        tray = subprocess.Popen([py, str(HERE / "indicator.py")],
+        tray = subprocess.Popen([py, str(HERE / indicator), label, str(STOP)],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception:
-        pass                                        # a missing tray must not stop a recording
+        pass
 
     with ps.KeepAwake():                            # no-op on Linux, systemd-inhibit covers it
         proc = subprocess.Popen(worker, env=env)

@@ -47,10 +47,21 @@ if ($missing.Count -gt 0) {
         Say "  installing $pkg"
         winget install --accept-source-agreements --accept-package-agreements -e --id $pkg | Out-Null
     }
+    # A running shell keeps the environment it started with, so newly installed
+    # programs are invisible until PATH is reloaded. Reload it here rather than
+    # sending the user away to start again, which is where setup was being lost.
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") +
+                ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
     Say ""
-    Say "Prerequisites installed. PowerShell must be restarted to see them."
-    Say "Close this window, open it again, and run the installer once more."
-    Read-Host "Press Enter to close"; exit 0
+    $stillMissing = @()
+    if (-not (Have python)) { $stillMissing += "python" }
+    if (-not (Have ffmpeg)) { $stillMissing += "ffmpeg" }
+    if ($stillMissing.Count -gt 0) {
+        Say "Installed, but $($stillMissing -join ' and ') is still not visible."
+        Say "Close this window, open it again, and run the installer once more."
+        Read-Host "Press Enter to close"; exit 0
+    }
+    Say "  installed and available, continuing"
 }
 Say "  all present"
 
