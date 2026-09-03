@@ -57,6 +57,15 @@ def stop_requested():
     return stop.is_set() or (STOP_FILE and os.path.exists(STOP_FILE))
 
 
+def log(msg):
+    """Progress to stderr, which record.py sends to worker.log. A run that
+    quietly does nothing must look different from one that works."""
+    try:
+        print(f"[{datetime.datetime.now():%H:%M:%S}] {msg}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
 def append(text):
     with open(note_path, "a", encoding="utf-8") as f:
         f.write(text)
@@ -164,7 +173,10 @@ def main():
     # live, and the user chose to record anyway. Audio is still captured and
     # converted; the accurate transcript comes later from a machine that can.
     record_only = MODEL.strip().lower() in ("", "none")
+    log(f"model={MODEL!r} backend={BACKEND} device={DEVICE} compute={COMPUTE} "
+        f"window={WINDOW_SECS}s interval={INTERVAL_SECS}s language={LANGUAGE}")
     if record_only:
+        log("record-only mode: no live transcription on this machine")
         append("*Recording audio only: no live transcript on this machine. "
                "The transcript and notes are produced afterwards.*\n\n")
         model = None
@@ -173,6 +185,7 @@ def main():
                f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
         model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
                              cpu_threads=THREADS)
+        log("model loaded")
         append("*ready, recording*\n\n")
 
     # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
@@ -191,6 +204,7 @@ def main():
     else:
         source = ps.default_input_device()
 
+    log("ffmpeg source: " + " ".join(source))
     ff = subprocess.Popen(
         ["ffmpeg", "-loglevel", "error"] + source +
         ["-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
@@ -214,12 +228,17 @@ def main():
     chunks_q = queue.Queue()
 
     def reader():
+        first = True
         with open(raw_path, "wb") as raw:
             while True:
                 data = ff.stdout.read(4096)
                 if not data:
+                    log("audio source ended")
                     chunks_q.put(None)
                     return
+                if first:
+                    log("first audio received")
+                    first = False
                 raw.write(data)
                 raw.flush()
                 chunks_q.put(data)
@@ -258,12 +277,18 @@ def main():
 
             if model is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
+                t0 = datetime.datetime.now()
                 live.update(model, buf, now - len(buf) / (RATE * 2), now)
+                log(f"pass at {now:.0f}s of audio took "
+                    f"{(datetime.datetime.now() - t0).total_seconds():.1f}s; "
+                    f"settled {len(live.settled.split())} words")
                 since_pass = 0
 
+        log(f"stopping after {total / (RATE * 2):.0f}s of audio")
         if model is not None and buf and since_pass:
             now = total / (RATE * 2)
             live.update(model, buf, now - len(buf) / (RATE * 2), now)
+            log(f"final pass done; settled {len(live.settled.split())} words")
     finally:
         ff.terminate()
         try:
