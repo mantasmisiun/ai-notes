@@ -269,33 +269,47 @@ if [ "$want_process" = 1 ]; then
   say "  Nothing waits on this stage, so the largest model that fits is used."
   say
 
+  # Size on what is actually FREE, not the card's total. A desktop holds 1.5 to
+  # 2 GB before anything starts, and the KV cache for a 16k context adds around
+  # another gigabyte on a larger model. Ollama spills layers to the CPU when a
+  # model does not fit and the summary then crawls, so each family is offered
+  # at the largest size that fits. Weights at Q4: gemma3 4b 3.3 GB, 12b 8.1 GB,
+  # 27b 17 GB; qwen3 8b 5.2 GB, 14b 9.3 GB; llama3.1 8b 4.9 GB.
+  usable=$(( VRAM_MIB - 2000 - 1200 ))
+  if   [ "$usable" -ge 18000 ]; then gemma="gemma3:27b"; gemma_gb="17"
+  elif [ "$usable" -ge 8600 ];  then gemma="gemma3:12b"; gemma_gb="8.1"
+  else                                gemma="gemma3:4b";  gemma_gb="3.3"; fi
+  if   [ "$usable" -ge 9500 ];  then qwen="qwen3:14b";   qwen_gb="9.3"
+  else                                qwen="qwen3:8b";    qwen_gb="5.2"; fi
+  llama="llama3.1:8b"; llama_gb="4.9"
+
   say "Model for writing the notes:"; say
-  if [ "$note_lang" = "en" ]; then
-    say "  1) Llama 3.1                   fluent English, but drops and inverts facts"
-    say "  2) Gemma                       better multilingual coverage"
-    say "  3) Qwen 3        [recommended]  keeps the most detail, 100+ languages"
-  else
-    say "  1) Llama 3.1                   fluent English, but drops and inverts facts"
-    say "  2) Gemma        [recommended]  better multilingual coverage"
-    say "  3) Qwen 3        [recommended]  100+ languages, best multilingual"
+  say "  ${usable} MiB of VRAM is usable once the desktop and the context window"
+  say "  are allowed for, so each family is offered at the largest size that fits."
+  say
+  # What each did on the same 17-minute, 3000-word English recording, with the
+  # same prompts, so the choice is made on evidence rather than on reputation.
+  say "  1) $(printf '%-12s' "$llama") ${llama_gb} GB  Fluent English. Wrote 450 words from 3000,"
+  say "                              fused two passages into a false claim and"
+  say "                              inverted who said what. Weakest of the three."
+  say "  2) $(printf '%-12s' "$gemma") ${gemma_gb} GB  Strong across languages, the best of the"
+  say "                              three for notes in Lithuanian. Not yet compared"
+  say "                              on the same recording as the other two."
+  if [ "$gemma" = "gemma3:4b" ]; then
+  say "                              The 12b needs 8.1 GB and does not fit this card."
   fi
+  say "  3) $(printf '%-12s' "$qwen") ${qwen_gb} GB  Twice Llama's detail, legal facts and"
+  say "                              quotes right, still misattributed some lines."
+  say "                              [recommended]"
   say "  4) Other, enter an Ollama tag yourself"; say
   say "These can be changed later by re-running this installer and choosing"
   say "\"Change models only\"; nothing else is touched."; say
-  # Size on what is actually FREE, not the card's total. A desktop holds 1.5 to
-  # 2 GB before anything starts, and the KV cache for a 16k context adds around
-  # another gigabyte on a larger model. A 14B at Q4 needs roughly 9 GB of
-  # weights, so it does not fit a 10 GB card whatever the label says: Ollama
-  # spills layers to CPU and it crawls.
-  usable=$(( VRAM_MIB - 2000 - 1200 ))
-  say "  ${usable} MiB usable once the desktop and the context window are allowed for."
-  say
-  dflt=3; [ "$note_lang" != "en" ] && dflt=2
+  dflt=3
   case "$(ask "Select" "$dflt")" in
-    2) llm="gemma2:9b" ;;
-    3) if [ "$usable" -ge 9500 ]; then llm="qwen3:14b"; else llm="qwen3:8b"; fi ;;
+    2) llm="$gemma" ;;
+    3) llm="$qwen" ;;
     4) llm="$(ask "Ollama tag" "$d_llm")" ;;
-    *) llm="llama3.1:8b" ;;
+    *) llm="$llama" ;;
   esac
   say "Summariser: $llm"; say
 fi
