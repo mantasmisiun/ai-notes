@@ -66,6 +66,13 @@ python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install -q --upgrade pip
 "$DIR/venv/bin/pip" install -q faster-whisper numpy PyQt6
 
+# The benchmark and the live pass run from this venv, so an NVIDIA machine
+# needs the CUDA libraries here too, not only in the processing one.
+if [ "${HAS_CUDA:-0}" = "1" ]; then
+  echo "  adding CUDA libraries"
+  "$DIR/venv/bin/pip" install -q nvidia-cublas-cu12 nvidia-cudnn-cu12
+fi
+
 # whisper.cpp is built only when Vulkan is a candidate, so the benchmark has
 # something to measure. It is not selected unless it actually wins.
 if [ "${BUILD_VULKAN:-0}" = "1" ] && [ ! -x "$DIR/whisper.cpp/build/bin/whisper-cli" ]; then

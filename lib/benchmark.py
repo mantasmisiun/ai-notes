@@ -42,6 +42,7 @@ class Spinner:
             print("\r" + " " * (len(self.label) + 8) + "\r", end="", flush=True)
 
 
+SHARED    = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "shared")
 lang      = sys.argv[1]                     # en | lt
 samples   = sys.argv[2]                     # directory holding sample-<lang>.ogg
 work      = sys.argv[3]                     # scratch directory
@@ -73,6 +74,8 @@ dur = float(subprocess.run(
 
 CHILD = r"""
 import json, os, sys, time
+sys.path.insert(0, os.environ["LECTURE_SHARED"])
+import cuda_libs; cuda_libs.enable()
 from faster_whisper import WhisperModel
 model, device, wav, lang, mode = sys.argv[1:6]
 # float16 large-v3 peaks near 4.5 GB. On a card with less than about 6 GB
@@ -106,12 +109,14 @@ def time_faster_whisper(model, device):
         with Spinner(f"downloading {label(model)}"):
             subprocess.run([sys.executable, "-c", CHILD, model, "cpu", wav, lang, "fetch"],
                            capture_output=True, text=True, check=True,
-                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
+                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB),
+                                LECTURE_SHARED=str(SHARED)))
         _fetched.add(model)
     with Spinner(f"benchmarking {label(model)} on {device}"):
         r = subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "run"],
                            capture_output=True, text=True,
-                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
+                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB),
+                                LECTURE_SHARED=str(SHARED)))
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr else "failed")
     out = json.loads(r.stdout.strip().splitlines()[-1])
