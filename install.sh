@@ -341,8 +341,9 @@ if [ "$want_capture" = 1 ] && [ -n "$live" ]; then
   esac
   say
   say "  While recording, two files appear:"
-  say "    $tr_dir/live/         the live transcript, rewritten as it goes"
+  say "    $tr_dir/auto/live/    the live transcript, rewritten as it goes"
   say "    $tr_dir/raw notes/    yours: write here, fill in the table to file it"
+  say "  Everything under $tr_dir/auto/ is the pipeline's; each folder has an _about.md."
   say
   say "  Live model: $(basename "$live") on $backend, updating every ${chunk_secs:-12}s."
 elif [ "$want_capture" = 1 ]; then

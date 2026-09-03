@@ -23,13 +23,13 @@ CONF = ROOT / "config.sh"
 def pending(NOTES):
     """Recordings with audio but no transcript, oldest first."""
     out = []
-    audio_dir = NOTES / "audio"
+    audio_dir = NOTES / "auto" / "audio"
     if not audio_dir.is_dir():
         return out
     for a in sorted(audio_dir.iterdir()):
         if a.suffix.lower() not in AUDIO_EXT or a.stat().st_size == 0:
             continue
-        if (NOTES / "transcripts" / f"{a.stem}.md").exists():
+        if (NOTES / "auto" / "transcripts" / f"{a.stem}.md").exists():
             continue
         out.append(a.stem)
     return out

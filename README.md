@@ -115,10 +115,12 @@ to find than one in a holding pen.
 
 ```
 Transcriptions/
-  live/         rough, written during the lecture, deleted once the note exists
-  transcripts/  accurate, kept
-  audio/        Opus, deleted after 7 days
-  unfiled/      recordings that matched no timetable row
+  raw notes/    yours: one per recording, edit freely, fill the table to file it
+  auto/         written by the pipeline; anything typed here is lost
+    live/         rough, rewritten during the lecture, deleted once the note exists
+    transcripts/  accurate, kept; every paragraph has a block id the notes link to
+    audio/        Opus, deleted 7 days after the note is written
+    unfiled/      finished notes that do not know their Area and Subject yet
 
 University/<MODULE>/
   Timetable <MODULE>.md      yours, read only

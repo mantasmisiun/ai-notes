@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "..", "shared"))
 import timetable
+import layout
 import prompts
 import rawnote
 
@@ -207,6 +208,23 @@ def linker(labels, rel_transcript):
     return convert
 
 
+def with_time_lines(notes, start):
+    """The model writes topic blocks: a ### title, a line with the time marker
+    where the topic starts, key points, an optional paragraph. Give a block
+    that forgot its marker line the chunk's start, so every title has a link
+    into the transcript, and drop any ## heading the model added on its own."""
+    lines = [l for l in notes.splitlines() if not l.startswith("## ")]
+    out, i = [], 0
+    while i < len(lines):
+        out.append(lines[i])
+        if lines[i].startswith("### ") and start:
+            nxt = [l for l in lines[i + 1:i + 3] if l.strip()]
+            if not (nxt and CITED_RE.search(nxt[0])):
+                out.append(f"[{start}]")
+        i += 1
+    return "\n".join(out)
+
+
 def split_off(note, heading):
     """Remove one ## section from the model's output and return (rest, section),
     so Open questions can sit after the detail rather than before it."""
@@ -357,16 +375,16 @@ print("  combining", flush=True)
 top = unfence(ask(notes_intro + P["combine"].format(sections="\n\n---\n\n".join(summaries))))
 top, open_q = split_off(top, H["open"])
 
+# Topic blocks carry their own titles, so no per-chunk heading: the reader sees
+# one continuous run of topics, each with the time it starts linked into the
+# transcript.
 detail = [f"## {H['detail']}"]
 for (start, end, c), notes in zip(parts, summaries):
     # snap only to markers inside this chunk: a time the model invents then
     # lands somewhere in the passage it was writing about, not at the far end
     # of the recording
     convert = linker(re.findall(r"\[(\d{1,2}:\d\d:\d\d)\]", c), rel_transcript)
-    rng = convert.link(start) if start else ""
-    if end and end != start:
-        rng += f" to {end}"
-    detail.append((f"### {rng}\n\n" if rng else "") + convert(notes.strip()))
+    detail.append(convert(with_time_lines(notes.strip(), start)))
 note = top.rstrip() + "\n\n" + "\n\n".join(detail)
 if open_q:
     note += "\n\n" + open_q
@@ -385,7 +403,7 @@ if subject_dir:
 elif area and subject:
     dest_dir = os.path.join(VAULT, area, subject, SESSIONS)
 else:
-    dest_dir = os.path.join(NOTES, "unfiled")
+    dest_dir = str(layout.auto_dir(NOTES, "unfiled"))
 
 if kind and topic:
     fname = f"{stamp} {kind} - {topic}.md"
@@ -395,12 +413,14 @@ else:
     fname = f"{stamp}.md"
 
 os.makedirs(dest_dir, exist_ok=True)
+if os.path.basename(dest_dir) == SESSIONS:
+    layout.write_sessions_about(dest_dir)
 out = os.path.join(dest_dir, fname)
 tmp = out + ".tmp"
 
 audio = None
 for ext in (".ogg", ".mp3", ".m4a", ".wav"):
-    p = os.path.join(NOTES, "audio", stamp + ext)
+    p = str(layout.auto_dir(NOTES, "audio") / (stamp + ext))
     if os.path.exists(p):
         audio = os.path.relpath(p, VAULT).replace(os.sep, "/")
         break
@@ -412,6 +432,8 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write(f'stamp: "{stamp}"\n')
     f.write(f"date: {when:%Y-%m-%d}\ntime: {when:%H:%M}\n")
     f.write("type: lecture-note\n")
+    # written once by the pipeline, yours afterwards: nothing rewrites it
+    f.write("generated: once\n")
     if area:
         f.write(f'area: "{area}"\n')
     if subject:

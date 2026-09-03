@@ -281,6 +281,8 @@ def finalise():
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
         import rawnote
         notes_root = Path(ogg_path).parent.parent
+        if notes_root.name == "auto":            # audio lives in auto/audio
+            notes_root = notes_root.parent
         stamp_ = Path(ogg_path).stem
         rn = notes_root / "raw notes" / f"{stamp_}.md"
         if rn.exists():
