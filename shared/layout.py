@@ -155,12 +155,12 @@ Anything you type here is overwritten or deleted. Your own notes belong in
 | live | the rough transcript, rewritten every few seconds while recording | deleted once the finished note exists |
 | transcripts | the accurate transcript, generated once from the audio | kept |
 | audio | the recording | deleted {keep_days} days after its note is written |
-| unfiled | finished notes that do not know their Area and Subject yet | filed once you fill the raw note's table |
+| unfiled | finished notes that do not know their Area and Subject yet | filed once you fill the table in your note |
 """,
         auto_dir(notes, "live"): """# Live transcripts
 
 Rewritten every few seconds while a recording runs, so anything you type
-here is lost within seconds. Write in your raw note instead. Deleted once the
+here is lost within seconds. Write in your note instead. Deleted once the
 finished note exists.
 """,
         auto_dir(notes, "transcripts"): """# Transcripts
