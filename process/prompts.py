@@ -7,6 +7,8 @@ a Lithuanian lecture summarised into an English note needs the English prompt
 to say where the text came from.
 """
 
+import re
+
 LANG_NAMES = {"en": "English", "lt": "Lithuanian"}
 LANG_NAMES_LT = {"en": "anglų", "lt": "lietuvių"}
 
@@ -21,14 +23,15 @@ HEADINGS = {
 # A Follow-ups section is asked for only when the material contains something
 # that looks like one. Three models in a row, told to omit the section when
 # there was nothing, invented questions rather than leave it out.
+# Whole words: a bare substring "exam" matched "have you examined this
+# critically" and a video about a church got a Follow-ups section.
 FOLLOWUP_TRIGGERS = {
-    "en": ("homework", "assignment", "reading list", "read chapter", "read the chapter",
-           "textbook", "for next week", "next lecture", "next seminar", "look it up",
-           "look up", "hand in", "due date", "due on", "due by", "prepare for",
-           "before next", "exam"),
-    "lt": ("namų darb", "užduot", "perskaityk", "perskaityt", "skaityk", "vadovėl",
-           "kitai paskait", "kitą paskait", "kitai savait", "kitą savait", "atsiskait",
-           "pasiruošk", "pasiruošt", "egzamin", "iki kito"),
+    "en": re.compile(r"\b(?:homework|assignments?|reading list|read (?:the )?chapter|"
+                     r"textbook|for next week|next (?:lecture|seminar|class)|look (?:it )?up|"
+                     r"hand (?:it )?in|due (?:date|on|by)|prepare for|before next|exams?)\b", re.I),
+    "lt": re.compile(r"\b(?:namų darb\w*|užduot\w*|perskaityk\w*|perskaityt\w*|skaityk\w*|"
+                     r"vadovėl\w*|kit[aąi]\w* paskait\w*|kit[aąi]\w* savait\w*|atsiskait\w*|"
+                     r"pasiruoš\w*|egzamin\w*|iki kito)\b", re.I),
 }
 
 LECTURE_KINDS = ("lecture", "seminar", "lab", "tutorial", "workshop", "class", "lesson",
@@ -56,9 +59,12 @@ def roles(kind, lang="en"):
 
 
 def wants_followups(text, lang="en"):
-    t = (text or "").lower()
-    trig = FOLLOWUP_TRIGGERS.get(lang, ()) + FOLLOWUP_TRIGGERS["en"]
-    return any(w in t for w in trig)
+    t = text or ""
+    for key in {lang, "en"}:
+        rx = FOLLOWUP_TRIGGERS.get(key)
+        if rx and rx.search(t):
+            return True
+    return False
 
 PROMPTS = {
     "en": {
