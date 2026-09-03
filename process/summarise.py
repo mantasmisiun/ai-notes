@@ -414,8 +414,8 @@ top, open_q = split_off(top, H["open"])
 top, legacy = split_off(top, H["legacy_open"])
 if not ask_followups:
     open_q = ""
-elif not open_q:
-    open_q = legacy
+elif not open_q and legacy:
+    open_q = legacy.replace(f"## {H['legacy_open']}", f"## {H['open']}", 1)
 
 # Topic blocks carry their own titles, so no per-chunk heading: the reader sees
 # one continuous run of topics, each with the time it starts linked into the
