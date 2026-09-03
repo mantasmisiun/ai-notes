@@ -137,7 +137,11 @@ def time_whisper_cpp(model):
     r = subprocess.run([os.path.join(wcpp, "build/bin/whisper-cli"),
                         "-m", ggml, "-l", lang, "-f", wav, "-t", str(os.cpu_count() or 4),
                         "-otxt", "-of", os.path.join(work, "bench")],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True,
+                       # its libraries sit beside the binary; the build's RPATH
+                       # pointed into a build directory that no longer existed
+                       env=dict(os.environ, LD_LIBRARY_PATH=os.path.join(wcpp, "build/bin")
+                                + ":" + os.environ.get("LD_LIBRARY_PATH", "")))
     el = time.perf_counter() - t0
     sp.__exit__()
     txt = os.path.join(work, "bench.txt")

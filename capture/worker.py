@@ -5,7 +5,7 @@ then compress the audio into the vault and embed it.
 Audio is written as headerless raw PCM so that a power cut costs only the tail,
 never the whole file.
 """
-import os, sys, re, time, signal, subprocess, datetime, threading
+import os, sys, re, time, json, wave, signal, subprocess, datetime, threading
 
 from pathlib import Path
 
@@ -26,9 +26,12 @@ RATE       = 16000
 WINDOW_SECS   = int(os.environ.get("LECTURE_WINDOW_SECS", "30"))
 INTERVAL_SECS = int(os.environ.get("LECTURE_CHUNK_SECS", "12"))
 MODEL      = os.environ.get("LECTURE_MODEL", "small.en")
-# The benchmark chose a backend and the installer recorded it; the worker has to
-# actually use it. device was hardcoded to cpu, so a machine measured at 12x on
-# CUDA ran its live pass on the CPU at 1.5x and fell hopelessly behind.
+# Three backends. cuda and cpu run faster-whisper (CTranslate2). vulkan runs
+# whisper.cpp built with GGML_VULKAN, the only route onto an AMD or Intel GPU
+# because CTranslate2 has no Vulkan. The benchmark measured vulkan with
+# whisper.cpp while this worker knew only faster-whisper, so a config that said
+# vulkan ran medium.en on the CPU at six threads and could not hold the
+# interval that had been measured on the GPU.
 BACKEND    = os.environ.get("LECTURE_BACKEND", "cpu").lower()
 DEVICE     = "cuda" if BACKEND == "cuda" else "cpu"
 COMPUTE    = os.environ.get("LECTURE_COMPUTE",
@@ -36,6 +39,8 @@ COMPUTE    = os.environ.get("LECTURE_COMPUTE",
 THREADS    = int(os.environ.get("LECTURE_THREADS", "6"))
 BITRATE    = os.environ.get("LECTURE_BITRATE", "24k")
 LANGUAGE   = os.environ.get("LECTURE_LANGUAGE", "en")
+WCPP       = Path(os.environ.get("LECTURE_WCPP")
+                  or Path(__file__).resolve().parent / "whisper.cpp")
 
 note_path = sys.argv[1]   # markdown note
 raw_path  = sys.argv[2]   # scratch .pcm, outside the vault
@@ -81,6 +86,113 @@ def append(text):
 STUTTER = re.compile(r"(..+?)\1{2,}")
 
 
+class CT2Backend:
+    """faster-whisper on CUDA or CPU. units() returns (start, end, word) for
+    one buffer, already stripped of what Whisper's own statistics call
+    hallucination."""
+    name = DEVICE
+
+    def __init__(self):
+        import cuda_libs; cuda_libs.enable()
+        from faster_whisper import WhisperModel
+        self.model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
+                                  cpu_threads=THREADS)
+
+    def units(self, buf_bytes):
+        audio = np.frombuffer(buf_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        segments, _ = self.model.transcribe(
+            audio, language=LANGUAGE, vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False,
+            word_timestamps=True)
+        out = []
+        for seg in segments:
+            # Whisper's own confidence statistics flag hallucinations, applied
+            # by Whisper's own rule: a segment is silence being narrated only
+            # when no-speech probability is high AND log-probability is low,
+            # together. Dropping on low log-probability alone, as an earlier
+            # version did, threw away whole 30-second windows of Lithuanian
+            # from a multilingual model, whose every segment scores low; the
+            # note then did not change for passes on end and the last words
+            # before Stop never landed. High compression ratio is repetition
+            # and is dropped on its own: a flush on trailing silence once
+            # produced a dozen copies of one invented word.
+            if (getattr(seg, "compression_ratio", 0) > 2.4
+                    or (getattr(seg, "no_speech_prob", 0) > 0.6
+                        and getattr(seg, "avg_logprob", 0) < -1.0)):
+                continue
+            words = seg.words or []
+            if words:
+                out += [(w.start, w.end, w.word.strip()) for w in words]
+            else:
+                out.append((seg.start, seg.end, seg.text.strip()))
+        return out
+
+
+class WhisperCppBackend:
+    """whisper.cpp on Vulkan: one whisper-cli run per pass, one word per
+    segment (-ml 1 -sow) so settling works on word timestamps exactly as with
+    faster-whisper. The model is loaded afresh each pass, which is what the
+    benchmark timed, so the interval it chose already includes that cost."""
+    name = "vulkan"
+
+    def __init__(self, scratch):
+        self.cli  = WCPP / "build" / "bin" / "whisper-cli"
+        self.ggml = WCPP / "models" / f"ggml-{MODEL}.bin"
+        if not self.cli.is_file():
+            raise FileNotFoundError(f"{self.cli} is not built")
+        if not self.ggml.is_file():
+            log(f"fetching {self.ggml.name} for whisper.cpp")
+            subprocess.run(["sh", str(WCPP / "models" / "download-ggml-model.sh"), MODEL],
+                           cwd=str(WCPP), check=True, capture_output=True)
+        # Its shared libraries sit beside the binary. The build's RPATH pointed
+        # into a build directory that no longer existed, and the binary could
+        # not start until the path was given explicitly.
+        self.libpath = dict(os.environ, LD_LIBRARY_PATH=str(self.cli.parent) + ":"
+                            + os.environ.get("LD_LIBRARY_PATH", ""))
+        # the window goes through a WAV on disk, in the scratch directory, never
+        # in /tmp, which on this laptop is a RAM disk
+        self.wav  = Path(scratch) / f".live-{os.getpid()}.wav"
+        self.base = Path(scratch) / f".live-{os.getpid()}"
+        self.first = True
+
+    def units(self, buf_bytes):
+        with wave.open(str(self.wav), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
+            w.writeframes(buf_bytes)
+        r = subprocess.run([str(self.cli), "-m", str(self.ggml), "-l", LANGUAGE,
+                            "-t", str(THREADS), "-f", str(self.wav),
+                            "-ml", "1", "-sow", "-oj", "-of", str(self.base), "-np"],
+                           capture_output=True, text=True, env=self.libpath, **_quiet())
+        if self.first:
+            self.first = False
+            for line in r.stderr.splitlines():
+                if "ggml_vulkan" in line:          # proof of which device runs this
+                    log(line.strip())
+        js = self.base.with_suffix(".json")
+        if r.returncode != 0 or not js.is_file():
+            log(f"whisper-cli failed ({r.returncode}): {r.stderr.strip()[-300:]}")
+            return []
+        with open(js, encoding="utf-8") as f:
+            entries = json.load(f).get("transcription", [])
+        out = []
+        for e in entries:
+            text = e.get("text", "").strip()
+            # whisper.cpp names silence and music in brackets
+            if not text or (text[0] in "[(" and text[-1] in "])"):
+                continue
+            o = e.get("offsets", {})
+            out.append((o.get("from", 0) / 1000.0, o.get("to", 0) / 1000.0, text))
+        return out
+
+    def close(self):
+        for p in (self.wav, self.base.with_suffix(".json")):
+            try:
+                p.unlink()
+            except OSError:
+                pass
+
+
 class Live:
     """Keeps the note in step with a rolling window.
 
@@ -101,14 +213,7 @@ class Live:
             f.flush()
             os.fsync(f.fileno())
 
-    def update(self, model, buf_bytes, buf_start, now):
-        audio = np.frombuffer(buf_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        segments, _ = model.transcribe(
-            audio, language=LANGUAGE, vad_filter=True,
-            vad_parameters=dict(min_silence_duration_ms=500),
-            condition_on_previous_text=False,
-            word_timestamps=True)
-
+    def update(self, backend, buf_bytes, buf_start, now):
         # Only the last interval is still in flux; everything before it has had
         # the full window of context and will not improve.
         cutoff_abs = now - INTERVAL_SECS
@@ -121,39 +226,21 @@ class Live:
         # a real recording showed settled_until stuck at 0.0 for a full minute
         # and the first thirty words lost.
         keep, tail, settled_to = [], [], self.settled_until
-        for seg in segments:
-            # Whisper's own confidence statistics flag hallucinations, applied
-            # by Whisper's own rule: a segment is silence being narrated only
-            # when no-speech probability is high AND log-probability is low,
-            # together. Dropping on low log-probability alone, as an earlier
-            # version did, threw away whole 30-second windows of Lithuanian
-            # from a multilingual model, whose every segment scores low; the
-            # note then did not change for passes on end and the last words
-            # before Stop never landed. High compression ratio is repetition
-            # and is dropped on its own: a flush on trailing silence once
-            # produced a dozen copies of one invented word.
-            if (getattr(seg, "compression_ratio", 0) > 2.4
-                    or (getattr(seg, "no_speech_prob", 0) > 0.6
-                        and getattr(seg, "avg_logprob", 0) < -1.0)):
+        for w_start, w_end, text in backend.units(buf_bytes):
+            if not text or STUTTER.search(text):
                 continue
-            words = seg.words or []
-            units = ([(w.start, w.end, w.word.strip()) for w in words] if words
-                     else [(seg.start, seg.end, seg.text.strip())])
-            for w_start, w_end, text in units:
-                if not text or STUTTER.search(text):
-                    continue
-                start_abs, end_abs = buf_start + w_start, buf_start + w_end
-                # Skip by where the word STARTS, with tolerance. Re-alignment
-                # shifts a word's end by a fraction of a second between passes,
-                # so a word settled just before the cutoff reappeared just after
-                # the settled mark on the next pass and was written twice.
-                if start_abs < self.settled_until - 0.15 or end_abs <= self.settled_until:
-                    continue
-                if end_abs <= cutoff_abs:
-                    keep.append(text)
-                    settled_to = max(settled_to, end_abs)
-                else:
-                    tail.append(text)
+            start_abs, end_abs = buf_start + w_start, buf_start + w_end
+            # Skip by where the word STARTS, with tolerance. Re-alignment
+            # shifts a word's end by a fraction of a second between passes,
+            # so a word settled just before the cutoff reappeared just after
+            # the settled mark on the next pass and was written twice.
+            if start_abs < self.settled_until - 0.15 or end_abs <= self.settled_until:
+                continue
+            if end_abs <= cutoff_abs:
+                keep.append(text)
+                settled_to = max(settled_to, end_abs)
+            else:
+                tail.append(text)
 
         # collapse a word repeated back to back, which is never speech
         def dedupe(ws):
@@ -171,9 +258,9 @@ class Live:
             self.settled_until = settled_to
         self.write(" ".join(tail))
 
-    def flush_all(self, model, buf_bytes, buf_start, now):
+    def flush_all(self, backend, buf_bytes, buf_start, now):
         """At stop there is no later pass to revise the tail, so settle it all."""
-        self.update(model, buf_bytes, buf_start, now + INTERVAL_SECS + 1)
+        self.update(backend, buf_bytes, buf_start, now + INTERVAL_SECS + 1)
 
 
 def finalise():
@@ -238,9 +325,6 @@ def main():
         ["-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
         stdout=subprocess.PIPE, **_quiet())
 
-    # Everything record.py wrote stays as the header; the body below it is
-    # rewritten each pass, because the tail of a rolling window can change.
-
     win_bytes  = RATE * 2 * WINDOW_SECS
     step_bytes = RATE * 2 * INTERVAL_SECS
 
@@ -285,20 +369,25 @@ def main():
     record_only = MODEL.strip().lower() in ("", "none")
     log(f"model={MODEL!r} backend={BACKEND} device={DEVICE} compute={COMPUTE} "
         f"window={WINDOW_SECS}s interval={INTERVAL_SECS}s language={LANGUAGE}")
-    if not record_only:
-        import cuda_libs; cuda_libs.enable()
-        from faster_whisper import WhisperModel
+    backend = None
     if record_only:
         log("record-only mode: no live transcription on this machine")
         append("*Recording audio only: no live transcript on this machine. "
                "The transcript and notes are produced afterwards.*\n\n")
-        model = None
     else:
-        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}` on {DEVICE}, "
+        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}` on {BACKEND}, "
                f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
-        model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
-                             cpu_threads=THREADS)
-        log("model loaded")
+        if BACKEND == "vulkan":
+            try:
+                backend = WhisperCppBackend(Path(raw_path).parent)
+            except Exception as e:
+                # never lose a recording to a missing build: the CPU is slower,
+                # not absent
+                log(f"vulkan backend unavailable ({e}); falling back to faster-whisper on cpu")
+                append("*whisper.cpp is not available here; running on the CPU instead.*\n")
+        if backend is None:
+            backend = CT2Backend()
+        log(f"model loaded on {backend.name}")
         append("*ready, recording*\n\n")
     ready = os.environ.get("LECTURE_READY_FILE", "")
     if ready:
@@ -306,10 +395,6 @@ def main():
             Path(ready).touch()
         except Exception:
             pass
-
-    # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
-    # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
-    # avfoundation on macOS, a named DirectShow device on Windows.
 
     # Everything record.py and the load messages wrote stays as the header; the
     # body below it is rewritten each pass because the tail can change.
@@ -346,10 +431,10 @@ def main():
             if len(buf) > keep_bytes:
                 buf = buf[-keep_bytes:]
 
-            if model is not None and since_pass >= step_bytes:
+            if backend is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
                 t0 = datetime.datetime.now()
-                live.update(model, buf, now - len(buf) / (RATE * 2), now)
+                live.update(backend, buf, now - len(buf) / (RATE * 2), now)
                 log(f"pass at {now:.0f}s of audio took "
                     f"{(datetime.datetime.now() - t0).total_seconds():.1f}s; "
                     f"settled {len(live.settled.split())} words")
@@ -374,9 +459,9 @@ def main():
                 buf += data
                 total += len(data)
         log(f"stopping after {total / (RATE * 2):.0f}s of audio")
-        if model is not None and buf:
+        if backend is not None and buf:
             now = total / (RATE * 2)
-            live.flush_all(model, buf, now - len(buf) / (RATE * 2), now)
+            live.flush_all(backend, buf, now - len(buf) / (RATE * 2), now)
             log(f"final pass done; settled {len(live.settled.split())} words")
     finally:
         ff.terminate()
@@ -384,6 +469,8 @@ def main():
             ff.wait(timeout=5)
         except Exception:
             ff.kill()
+        if backend is not None and hasattr(backend, "close"):
+            backend.close()
         finalise()
 
 
