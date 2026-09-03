@@ -13,7 +13,14 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 RATE       = 16000
-CHUNK_SECS = 12
+# Whisper's encoder always processes exactly 30 seconds: a shorter buffer is
+# padded to that length, so it costs the same. Window size is therefore free up
+# to 30s and only the update interval costs anything, which is why the old
+# 12-second tiling wasted most of its compute and saw less context than Whisper
+# expects. The interval comes from the benchmark: roughly 2 x 30 / real-time
+# factor, so a fast machine updates often and a slow one does not fall behind.
+WINDOW_SECS   = int(os.environ.get("LECTURE_WINDOW_SECS", "30"))
+INTERVAL_SECS = int(os.environ.get("LECTURE_CHUNK_SECS", "12"))
 MODEL      = os.environ.get("LECTURE_MODEL", "small.en")
 COMPUTE    = os.environ.get("LECTURE_COMPUTE", "int8")
 THREADS    = int(os.environ.get("LECTURE_THREADS", "6"))
@@ -37,15 +44,49 @@ def append(text):
         os.fsync(f.fileno())
 
 
-def transcribe(model, raw):
-    audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-    segments, _ = model.transcribe(
-        audio, language=LANGUAGE, vad_filter=True,
-        vad_parameters=dict(min_silence_duration_ms=500),
-        condition_on_previous_text=False)
-    text = " ".join(s.text.strip() for s in segments).strip()
-    if text:
-        append(text + " ")
+class Live:
+    """Keeps the note in step with a rolling window.
+
+    Each pass re-reads the last WINDOW seconds, so text near the end can change
+    as more context arrives. Anything older than one interval is settled and
+    kept; the tail is provisional and rewritten each time.
+    """
+
+    def __init__(self, header):
+        self.header = header
+        self.settled = ""          # text that will not change again
+        self.settled_until = 0.0   # audio seconds covered by settled
+
+    def write(self, provisional=""):
+        body = (self.settled + provisional).strip()
+        with open(note_path, "w", encoding="utf-8") as f:
+            f.write(self.header + body + "\n")
+            f.flush()
+            os.fsync(f.fileno())
+
+    def update(self, model, buf_bytes, buf_start, now):
+        audio = np.frombuffer(buf_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        segments, _ = model.transcribe(
+            audio, language=LANGUAGE, vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False)
+
+        # Only the last interval is still in flux; everything before it has had
+        # the full window of context and will not improve.
+        cutoff = max(0.0, (now - buf_start) - INTERVAL_SECS)
+        keep, tail = [], []
+        for seg in segments:
+            text = seg.text.strip()
+            if not text:
+                continue
+            if buf_start + seg.start < self.settled_until:
+                continue                      # already settled from a prior pass
+            (keep if seg.end <= cutoff else tail).append(text)
+
+        if keep:
+            self.settled = (self.settled + " " + " ".join(keep)).strip() + " "
+            self.settled_until = buf_start + cutoff
+        self.write(" ".join(tail))
 
 
 def finalise():
@@ -86,7 +127,8 @@ def finalise():
 
 
 def main():
-    append(f"*Model `{MODEL}`, loading...*\n")
+    append(f"*Model `{MODEL}`, {WINDOW_SECS}s window every {INTERVAL_SECS}s. "
+           f"Loading...*\n")
     model = WhisperModel(MODEL, device="cpu", compute_type=COMPUTE,
                          cpu_threads=THREADS)
     append("*ready, recording*\n\n")
@@ -107,24 +149,42 @@ def main():
         ["-ac", "1", "-ar", str(RATE), "-f", "s16le", "pipe:1"],
         stdout=subprocess.PIPE)
 
-    want = RATE * 2 * CHUNK_SECS
-    buf = b""
+    # Everything record.py wrote stays as the header; the body below it is
+    # rewritten each pass, because the tail of a rolling window can change.
+    header = open(note_path, encoding="utf-8").read()
+    live = Live(header)
+
+    win_bytes  = RATE * 2 * WINDOW_SECS
+    step_bytes = RATE * 2 * INTERVAL_SECS
+    buf = b""                 # the rolling window, at most win_bytes
+    since_pass = 0            # bytes accumulated since the last transcription
+    total = 0                 # bytes of audio seen, for absolute timing
+
     try:
         with open(raw_path, "wb") as raw:
             while not stop.is_set():
                 data = ff.stdout.read(4096)
                 if not data:
-                    append("\n*Audio source ended unexpectedly.*\n")
+                    live.write("\n\n*Audio source ended unexpectedly.*")
                     break
                 raw.write(data)
                 raw.flush()
                 os.fsync(raw.fileno())
+
                 buf += data
-                if len(buf) >= want:
-                    transcribe(model, buf)
-                    buf = b""
-            if buf:
-                transcribe(model, buf)
+                total += len(data)
+                since_pass += len(data)
+                if len(buf) > win_bytes:
+                    buf = buf[-win_bytes:]
+
+                if since_pass >= step_bytes:
+                    now = total / (RATE * 2)
+                    live.update(model, buf, now - len(buf) / (RATE * 2), now)
+                    since_pass = 0
+
+            if buf and since_pass:
+                now = total / (RATE * 2)
+                live.update(model, buf, now - len(buf) / (RATE * 2), now)
     finally:
         ff.terminate()
         try:
