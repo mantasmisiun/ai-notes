@@ -27,6 +27,20 @@ function Screen {
     Write-Host ""
 }
 function Step($m) { Write-Host ""; Write-Host "--- $m" -ForegroundColor Cyan }
+# PowerShell turns any stderr line from a native program into a terminating
+# error when ErrorActionPreference is Stop. Progress messages, pip notices and
+# HF warnings all go to stderr, so a step can abort on text that says "this
+# takes a few minutes". Run such programs with that off and judge by exit code.
+function Native([string]$exe, [string[]]$argv) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $lines = @()
+    & $exe @argv 2>&1 | ForEach-Object { $t = "$_"; Write-Host "  $t"; $lines += $t }
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $prev
+    return @{ Lines = $lines; Code = $code }
+}
+
 function Ask($prompt, $default) {
     $r = Read-Host "$prompt [$default]"
     if ([string]::IsNullOrWhiteSpace($r)) { return $default }
@@ -159,6 +173,24 @@ if ($nvidia.Count -gt 0) {
 }
 Say "  done"
 
+# Lithuanian has one model worth using. No published CTranslate2 build exists,
+# so it is converted once into the cache with a throwaway toolchain that is
+# deleted afterwards. The venv-relative paths in fetch_lt_model.py cover
+# Windows, so this is the same step the Linux installer runs.
+$ltModel = ""
+if ($lang -eq "lt") {
+    Step "Preparing the Lithuanian model"
+    Say "  Converting paprika-whisper-lt. This happens once and takes a few minutes."
+    $r = Native "python" @("$Root\lib\fetch_lt_model.py", "$env:LOCALAPPDATA\lecture-pipeline")
+    $ltModel = if ($r.Lines.Count -gt 0) { ($r.Lines | Select-Object -Last 1).Trim() } else { "" }
+    if ($r.Code -ne 0 -or -not (Test-Path $ltModel)) {
+        Say ""
+        Say "Could not prepare the Lithuanian model. The last line above says why."
+        Read-Host "Press Enter to close"; exit 1
+    }
+    Say "  ready: $ltModel"
+}
+
 Step "Measuring this machine"
 Say "  Trying the largest model first and falling back only if it cannot keep"
 Say "  up. Models are downloaded as they are needed, so this takes a while."
@@ -174,25 +206,6 @@ if ($parts.Count -ge 4) {
     if ($parts[0] -eq "nvidia") { $cuda = 1 }
 }
 
-# Lithuanian has one model worth using. No published CTranslate2 build exists,
-# so it is converted once into the cache with a throwaway toolchain that is
-# deleted afterwards. The venv-relative paths in fetch_lt_model.py cover
-# Windows, so this is the same step the Linux installer runs.
-$ltModel = ""
-if ($lang -eq "lt") {
-    Step "Preparing the Lithuanian model"
-    Say "  Converting paprika-whisper-lt. This happens once and takes a few minutes."
-    $ltOut = & python "$Root\lib\fetch_lt_model.py" "$env:LOCALAPPDATA\lecture-pipeline" 2>&1
-    $ltOut | ForEach-Object { Write-Host "  $_" }
-    $ltModel = ($ltOut | Select-Object -Last 1).ToString().Trim()
-    if (-not (Test-Path $ltModel)) {
-        Say ""
-        Say "Could not prepare the Lithuanian model. The last line above says why."
-        Read-Host "Press Enter to close"; exit 1
-    }
-    Say "  ready: $ltModel"
-}
-
 $env:HAS_CUDA = "$cuda"
 $env:GPU_DISCRETE = "$discrete"
 $env:VRAM_MIB = "$vram"
@@ -202,10 +215,8 @@ $env:LECTURE_FIXED_MODEL = "$ltModel"
 # Stream rather than capture. Collecting the output first means nothing
 # appears until the whole benchmark finishes, which on a slow machine with
 # models to download is many minutes of a blank screen.
-$bench = @()
-& "$Root\capture\venv\Scripts\python.exe" "$Root\lib\benchmark.py" `
-      $lang "$Root\samples" "$Root\.bench" 2>&1 |
-    ForEach-Object { Write-Host $_; $bench += "$_" }
+$r = Native "$Root\capture\venv\Scripts\python.exe" @("$Root\lib\benchmark.py", $lang, "$Root\samples", "$Root\.bench")
+$bench = $r.Lines
 $resultLine = $bench | Where-Object { $_ -like "RESULT *" } | Select-Object -Last 1
 $result = if ($resultLine) { "$resultLine" } else { "" }
 

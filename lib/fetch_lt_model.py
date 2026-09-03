@@ -53,8 +53,12 @@ def main():
         print(out)
         return 0
 
+    # stdout, not stderr: PowerShell treats a native program's stderr as an
+    # error when its preference is Stop, and aborted the installer on this very
+    # line. The model path is still the last line printed, which is what callers
+    # read.
     print("Preparing the Lithuanian model. This happens once and takes a few minutes.",
-          file=sys.stderr)
+          flush=True)
     tmp_env = out.parent / ".convert-venv"
     shutil.rmtree(tmp_env, ignore_errors=True)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -84,7 +88,7 @@ def main():
     shutil.rmtree(tmp_env, ignore_errors=True)
 
     if not ready(out):
-        print("conversion did not produce a usable model", file=sys.stderr)
+        print("conversion did not produce a usable model", flush=True)
         return 1
     print(out)
     return 0
