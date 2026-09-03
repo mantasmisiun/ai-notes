@@ -126,9 +126,19 @@ def time_faster_whisper(model, device):
     return out["elapsed"], out["words"]
 
 
+def ggml_file(model):
+    """A stock model maps to whisper.cpp's download name; a converted
+    directory such as paprika-whisper-lt-ct2 maps to the GGML the Lithuanian
+    step produced beside it, ggml-paprika-whisper-lt.bin."""
+    name = os.path.basename(model.rstrip("/")) if os.path.isdir(model) else model
+    if name.endswith("-ct2"):
+        name = name[:-4]
+    return os.path.join(wcpp, "models", f"ggml-{name}.bin")
+
+
 def time_whisper_cpp(model):
-    ggml = os.path.join(wcpp, "models", f"ggml-{model}.bin")
-    if not os.path.exists(ggml):
+    ggml = ggml_file(model)
+    if not os.path.exists(ggml) and not os.path.isdir(model):
         with Spinner(f"downloading {label(model)} for whisper.cpp"):
             subprocess.run(["sh", os.path.join(wcpp, "models", "download-ggml-model.sh"), model],
                            cwd=wcpp, check=True, capture_output=True)
@@ -159,10 +169,13 @@ def label(model):
 def candidates(model):
     out = []
     if os.path.isdir(model):
-        # A converted CTranslate2 directory: faster-whisper only, since
-        # whisper.cpp needs its own GGML format.
+        # A converted CTranslate2 directory. whisper.cpp needs its own GGML
+        # format, which the Lithuanian step produces when whisper.cpp is
+        # built; Vulkan is offered when that file exists.
         if has_cuda:
             out.append(("cuda", lambda m=model: time_faster_whisper(m, "cuda")))
+        if has_vulkan and os.path.exists(ggml_file(model)):
+            out.append(("vulkan", lambda m=model: time_whisper_cpp(m)))
         out.append(("cpu", lambda m=model: time_faster_whisper(m, "cpu")))
         return out
     if has_cuda:

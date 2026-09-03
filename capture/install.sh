@@ -17,8 +17,13 @@ PHASE="${1:---prereqs}"
 if [ "$PHASE" = "--models" ]; then
   model="${LECTURE_MODEL:-small.en}"
   if [ "${LECTURE_BACKEND:-cpu}" = "vulkan" ]; then
-    echo "fetching the live model for whisper.cpp: $model"
-    sh "$DIR/whisper.cpp/models/download-ggml-model.sh" "$model" >/dev/null
+    name="$(basename "$model")"; name="${name%-ct2}"
+    if [ -f "$DIR/whisper.cpp/models/ggml-$name.bin" ]; then
+      echo "live model for whisper.cpp already present: ggml-$name.bin"
+    else
+      echo "fetching the live model for whisper.cpp: $model"
+      sh "$DIR/whisper.cpp/models/download-ggml-model.sh" "$model" >/dev/null
+    fi
   else
     echo "fetching the live model: $model"
     "$DIR/venv/bin/python" - "$model" <<'MODELDL'
