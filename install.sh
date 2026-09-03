@@ -19,7 +19,7 @@ screen() {
   if [ -t 1 ]; then
     command -v clear >/dev/null 2>&1 && clear || printf '\033[2J\033[H'
   fi
-  say "lecture-pipeline installer"
+  say "ai-notes installer"
   if [ -n "$DECIDED" ]; then say "$DECIDED"; fi
   say
 }
@@ -312,31 +312,25 @@ say
 if [ "$want_capture" = 1 ] && [ -n "$live" ]; then
   case "$OS_NAME" in
     Linux)
-      say "To record a lecture"
+      say "To record"
       say
-      say "  Search your applications for 'Lecture transcription'. Right click it"
-      say "  and choose Pin to Task Manager to keep it on the panel."
-      say
-      say "  Tap once to start. A red dot blinks in the system tray for as long"
-      say "  as it is recording."
-      say
-      say "  Tap the launcher again, or click the red dot, to stop."
+      say "  Search your applications for 'Transcribe' and pin it to the panel."
+      say "  Tap once to start. A red dot blinks in the system tray while it records."
+      say "  Tap again, or click the dot, to stop."
       ;;
-    Darwin|MINGW*|MSYS*|CYGWIN*)
-      say "Capture is not yet supported on $OS_NAME."
+    *)
+      say "To record"
       say
-      say "The recording wrapper uses systemd, flock and PulseAudio capture,"
-      say "which have no equivalent here. Transcription and summarising are"
-      say "portable and do work; only the capture half is Linux-only."
+      say "  Run capture/record.py. A window with a flashing red light stays on top"
+      say "  while it records; press Stop recording, or run it again, to stop."
       ;;
   esac
   say
-  say "  Transcript and your notes appear in:"
-  say "    $tr_dir/live/"
-  say "  Type in the 'my notes' file, never in the transcript. It is appended"
-  say "  to every few seconds and your edits would be lost."
+  say "  While recording, two files appear:"
+  say "    $tr_dir/live/         the live transcript, rewritten as it goes"
+  say "    $tr_dir/raw notes/    yours: write here, fill in the table to file it"
   say
-  say "  Using $live on $backend."
+  say "  Live model: $(basename "$live") on $backend, updating every ${chunk_secs:-12}s."
 elif [ "$want_capture" = 1 ]; then
   say "Recording audio only, with no live transcript, as chosen."
 fi

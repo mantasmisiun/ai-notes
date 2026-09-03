@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
-Name=Lecture transcription
+Name=Transcribe
 GenericName=Start or stop live transcription
-Comment=Tap to record a lecture and transcribe it into the Obsidian vault
+Comment=Start or stop a recording that transcribes into your Obsidian vault
 Exec=record.py
 Icon=media-record
 Terminal=false
