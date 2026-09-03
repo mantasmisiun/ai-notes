@@ -432,15 +432,21 @@ def main():
             if data is None:
                 ended = True
                 live.write("\n\n*Audio source ended unexpectedly.*")
-            # Keep at least the window, and never less than the audio no pass has
-            # transcribed yet plus ten seconds of context. Trimming to a fixed
-            # 30 s meant a late pass silently lost whatever had aged past it.
-            keep_bytes = max(win_bytes, since_pass + RATE * 2 * 10)
-            if len(buf) > keep_bytes:
-                buf = buf[-keep_bytes:]
+            # The buffer is exactly the window the benchmark sized for this
+            # machine, never more. It used to keep every second no pass had
+            # transcribed yet, so a pass that ran long handed Whisper more
+            # audio, ran longer still, and the backlog only ever grew: a
+            # five-minute recording needed two more minutes to drain at stop.
+            # Now a late pass costs a gap in the live text instead, and the
+            # accurate transcript covers it afterwards.
+            if len(buf) > win_bytes:
+                buf = buf[-win_bytes:]
 
             if backend is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
+                late = since_pass / (RATE * 2) - INTERVAL_SECS
+                if late > 5:
+                    log(f"pass starting {late:.0f}s late; the live text may skip ahead")
                 t0 = datetime.datetime.now()
                 live.update(backend, buf, now - len(buf) / (RATE * 2), now)
                 log(f"pass at {now:.0f}s of audio took "

@@ -56,6 +56,31 @@ has_vulkan = bool(wcpp) and os.path.isfile(os.path.join(wcpp, "build/bin/whisper
 # GOOD_ENOUGH.
 MIN_FACTOR   = float(os.environ.get("MIN_LIVE_FACTOR", "1.2"))
 GOOD_ENOUGH  = float(os.environ.get("LECTURE_GOOD_ENOUGH", "2.0"))
+
+
+def pacing(factor):
+    """(interval, window) for a model measured at `factor` x real time, or
+    None when no pacing keeps up.
+
+    Whisper's encoder processes exactly 30 s at a time, so a pass over a
+    window of n such blocks costs about n*30/factor seconds. Between passes
+    the live text settles everything older than one interval, and the next
+    pass must still see that audio in its window, which caps the interval at
+    window minus 15 s. Passes must not run back to back either: a lecture
+    hall laptop throttles, so the pass may use 85% of the interval at most.
+    A slow machine therefore gets a longer window and a longer interval, up
+    to three blocks; beyond that the caption is not live in any useful sense.
+    The old rule kept every second not yet transcribed in the buffer, so a
+    36 s interval handed Whisper two blocks per pass, the pass ran long, the
+    buffer grew, and a five-minute recording needed two more minutes to
+    drain at stop."""
+    for n in (1, 2, 3):
+        window = 30 * n
+        cost = window / factor
+        i_max = window - 15
+        if cost <= 0.85 * i_max:
+            return min(i_max, max(5, int(round(cost / 0.8)))), window
+    return None
 DISCRETE     = os.environ.get("GPU_DISCRETE", "0") == "1"
 VRAM_MIB     = int(os.environ.get("VRAM_MIB", "0") or 0)
 
@@ -234,7 +259,7 @@ for model in ladder:
             continue
         factor = dur / el
         results.append((model, backend, factor, words))
-        note = "" if factor >= MIN_FACTOR else "   too slow"
+        note = "" if (factor >= MIN_FACTOR and pacing(factor)) else "   too slow"
         print(f"  {label(model):<28} {backend:<8} {factor:>5.1f}x real time, "
               f"{words} words{note}")
 
@@ -267,9 +292,10 @@ if len(kept) < len(results):
     print()
 results = kept
 
-viable = [r for r in results if r[2] >= MIN_FACTOR]
+viable = [r for r in results if r[2] >= MIN_FACTOR and pacing(r[2])]
 if not viable:
-    print(f"Nothing reaches the {MIN_FACTOR}x minimum for live transcription.")
+    print("Nothing keeps up with live speech on this machine: a pass over 30 s "
+          "of audio must finish well inside the interval between updates.")
     print("RESULT\tnone\t-\t0\t12\t30")
     sys.exit(0)
 
@@ -285,15 +311,7 @@ else:
     why = ("the model for this language" if FIXED
                else "largest model that keeps up")
 
-# How often the live caption can update.
-#
-# Whisper's encoder always processes exactly 30 seconds: a shorter buffer is
-# padded, so it costs the same as a full one. Window size is therefore free up
-# to 30s and only the update interval costs anything. Each update is one window,
-# about 30/F seconds of compute, so updates must be spaced further apart than
-# that. Doubling it leaves headroom for a lecture hall and a throttling laptop.
-interval = max(5, int(round(2 * 30.0 / best[2])))
-window = 30
+interval, window = pacing(best[2])
 
 print(f"Selected: {label(best[0])} on {best[1]}, {best[2]:.1f}x real time.")
 print(f"Live caption: {window}s window, updating every {interval}s.")

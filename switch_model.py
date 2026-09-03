@@ -74,7 +74,7 @@ def benchmark(model, cfg):
                 result = line.split("\t")
     if not result or len(result) < 5 or result[1] == "none":
         return None
-    return result[1], result[4]          # backend, interval seconds
+    return result[1], result[4], (result[5] if len(result) > 5 else "30")   # backend, interval, window
 
 
 def main():
@@ -110,10 +110,11 @@ def main():
         outcome = benchmark(choice, cfg)
 
         if outcome:
-            backend, interval = outcome
+            backend, interval, window = outcome
             set_config(CONF, "LECTURE_MODEL", choice)
             set_config(CONF, "LECTURE_BACKEND", backend)
             set_config(CONF, "LECTURE_CHUNK_SECS", interval)
+            set_config(CONF, "LECTURE_WINDOW_SECS", window)
             print(f"\nKept. Live model is now {label(choice)} on {backend}, "
                   f"updating every {interval}s. Takes effect on the next recording.")
             return 0

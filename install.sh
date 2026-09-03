@@ -42,6 +42,7 @@ LECTURE_NOTE_LANGUAGE="$note_lang"
 
 LECTURE_MODEL="${live:-}"
 LECTURE_CHUNK_SECS="${chunk_secs:-12}"
+LECTURE_WINDOW_SECS="${window_secs:-30}"
 LECTURE_ASR_MODEL="${asr_model:-}"
 LECTURE_ASR_COMPUTE="${asr_compute:-}"
 LECTURE_LLM="${llm:-}"
@@ -192,75 +193,116 @@ if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
 fi
 
 # first pass: the component installers need the paths before they can run
-backend="${LECTURE_BACKEND:-cpu}"; live=""; chunk_secs=""; asr_model=""; asr_compute=""; llm="$d_llm"
+backend="${LECTURE_BACKEND:-cpu}"; live=""; chunk_secs=""; window_secs=""; asr_model=""; asr_compute=""; llm="$d_llm"
 write_config
 mkdir -p "$vault/$tr_dir"/{live,transcripts,audio,unfiled} "$scratch"
 "$ROOT/lib/example-module.sh" "$vault/$uni_dir"
 
-# ---- measure, rather than ask, which backend and live model to use ---------
-if [ "$want_capture" = 1 ] && [ "$models_only" = 1 ]; then
-  live="${LECTURE_MODEL:-}"
-  say "Keeping the measured live model: ${live:-none}"
+# ---- the live model: your pick, measured ----------------------------------
+choose_live_model() {                       # sets FIXED; "" lets the ladder pick
+  say "Live transcription model:"; say
+  if [ "$lang" = "lt" ]; then
+    say "  1) paprika-whisper-lt  [recommended]  by far the best Lithuanian; a large"
+    say "                                         model, so slow without a real GPU"
+    say "  2) small                              fast, weak Lithuanian"
+    say "  3) medium                             between the two"
+    say "  4) large-v3                           stock multilingual, as slow as paprika"
+    say "  5) Other, enter a model name yourself"
+  else
+    say "  1) Let the benchmark pick  [recommended]  the largest model that keeps up"
+    say "  2) small.en                               fast"
+    say "  3) medium.en                              between the two"
+    say "  4) large-v3                               best English, needs a real GPU"
+    say "  5) Other, enter a model name yourself"
+  fi
   say
-elif [ "$want_capture" = 1 ]; then
-  build_vulkan=0
-  if [ "$HAS_VULKAN" = 1 ]; then
-    missing="$(vulkan_build_missing)"
-    if [ -n "$missing" ]; then
-      say "Vulkan could be measured, but this machine is missing:"
-      for m in $missing; do say "  $m"; done
-      say
-      say "Install them and re-run to include Vulkan in the benchmark:"
-      say "  $(install_hint $missing)"
-      say
-      say "Continuing with CPU only."; say
-    else
-      build_vulkan=1
+  say "  Your choice is measured on this machine. One that cannot keep up with"
+  say "  live speech is refused, and you pick again."; say
+  case "$(ask "Select" "1")" in
+    2) FIXED="small${en_suffix}" ;;
+    3) FIXED="medium${en_suffix}" ;;
+    4) FIXED="large-v3" ;;
+    5) FIXED="$(ask "Model" "small${en_suffix}")" ;;
+    *) if [ "$lang" = "lt" ]; then FIXED="$LT_MODEL"; else FIXED=""; fi ;;
+  esac
+  screen
+}
+
+if [ "$want_capture" = 1 ]; then
+  en_suffix=""; [ "$lang" = "en" ] && en_suffix=".en"
+  keep_measured=0
+  if [ "$models_only" = 1 ] && [ -n "${LECTURE_MODEL:-}" ]; then
+    say "Live model now: $(basename "$LECTURE_MODEL") on ${LECTURE_BACKEND:-cpu},"
+    say "  ${LECTURE_WINDOW_SECS:-30}s window, updating every ${LECTURE_CHUNK_SECS:-12}s."; say
+    say "  1) Keep it"
+    say "  2) Pick another and measure it"; say
+    case "$(ask "Select" "1")" in 2) ;; *) keep_measured=1 ;; esac
+    screen
+  fi
+
+  if [ "$keep_measured" = 1 ]; then
+    live="$LECTURE_MODEL"; backend="${LECTURE_BACKEND:-cpu}"
+    chunk_secs="${LECTURE_CHUNK_SECS:-12}"; window_secs="${LECTURE_WINDOW_SECS:-30}"
+  else
+    build_vulkan=0
+    if [ "$HAS_VULKAN" = 1 ]; then
+      missing="$(vulkan_build_missing)"
+      if [ -n "$missing" ]; then
+        say "Vulkan could be measured, but this machine is missing:"
+        for m in $missing; do say "  $m"; done
+        say
+        say "Install them and re-run to include Vulkan in the benchmark:"
+        say "  $(install_hint $missing)"
+        say
+        say "Continuing with CPU only."; say
+      else
+        build_vulkan=1
+      fi
     fi
-  fi
 
-  say "--- preparing to benchmark this machine ---"
-  BUILD_VULKAN=$build_vulkan HAS_CUDA=$HAS_CUDA "$ROOT/capture/install.sh" --prereqs
-  # whisper.cpp exists only now, so the Lithuanian model's GGML twin is made
-  # here; without it Vulkan was never measured for Lithuanian
-  if [ "$build_vulkan" = 1 ] && [ -n "$LT_MODEL" ]; then
-    python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" --wcpp "$ROOT/capture/whisper.cpp" 2>&1 | tail -1 >/dev/null
-    [ -f "$ROOT/capture/whisper.cpp/models/ggml-paprika-whisper-lt.bin" ] && say "  Lithuanian model ready for Vulkan too"
-  fi
-  say
-
-  wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
-  bench_lang="$lang"; [ -f "$ROOT/samples/sample-$lang.ogg" ] || bench_lang=en
-  out="$(HAS_CUDA=$HAS_CUDA MIN_LIVE_FACTOR=$MIN_LIVE_FACTOR \
-        LECTURE_FIXED_MODEL="$LT_MODEL" \
-        GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
-        "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
-        "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
-  result="$(printf '%s\n' "$out" | sed -n 's/^RESULT\t//p')"
-  backend="$(printf '%s' "$result"    | cut -d"$(printf '\t')" -f1)"
-  live="$(printf '%s' "$result"       | cut -d"$(printf '\t')" -f2)"
-  chunk_secs="$(printf '%s' "$result" | cut -d"$(printf '\t')" -f4)"
-  say
-
-  if [ "$backend" = "none" ]; then
-    say "Live transcription in this language needs ${MIN_LIVE_FACTOR}x or better,"
-    say "and this machine does not reach it. Smaller models are fast enough but"
-    say "their quality is too poor to be worth reading."; say
-    say "  1) Record audio only, no live transcript"
-    say "     The recording still works. The accurate transcript and notes are"
-    say "     produced later on the processing machine, which is where the"
-    say "     quality comes from anyway."
-    say "  2) Switch to English"
-    say "     Only if your lectures are actually in English. An English model on"
-    say "     other speech produces confident nonsense."
-    say "  3) Cancel"; say
-    case "$(ask "Select" "1")" in
-      2) lang=en; note_lang=en; backend=cpu; live="small.en"
-         say "Switched to English. Re-run the installer to benchmark it." ;;
-      3) say "cancelled"; exit 0 ;;
-      *) backend=none; live="" ;;
-    esac
+    say "--- preparing to benchmark this machine ---"
+    BUILD_VULKAN=$build_vulkan HAS_CUDA=$HAS_CUDA "$ROOT/capture/install.sh" --prereqs
+    # whisper.cpp exists only now, so the Lithuanian model's GGML twin is made
+    # here; without it Vulkan was never measured for Lithuanian
+    if [ "$build_vulkan" = 1 ] && [ -n "$LT_MODEL" ]; then
+      python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" --wcpp "$ROOT/capture/whisper.cpp" 2>&1 | tail -1 >/dev/null
+      [ -f "$ROOT/capture/whisper.cpp/models/ggml-paprika-whisper-lt.bin" ] && say "  Lithuanian model ready for Vulkan too"
+    fi
     say
+    wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
+    bench_lang="$lang"; [ -f "$ROOT/samples/sample-$lang.ogg" ] || bench_lang=en
+
+    while :; do
+      choose_live_model
+      say "--- measuring ---"
+      out="$(HAS_CUDA=$HAS_CUDA MIN_LIVE_FACTOR=$MIN_LIVE_FACTOR \
+            LECTURE_FIXED_MODEL="$FIXED" \
+            GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
+            "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
+            "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
+      result="$(printf '%s\n' "$out" | sed -n 's/^RESULT\t//p')"
+      backend="$(printf '%s' "$result"     | cut -d"$(printf '\t')" -f1)"
+      live="$(printf '%s' "$result"        | cut -d"$(printf '\t')" -f2)"
+      chunk_secs="$(printf '%s' "$result"  | cut -d"$(printf '\t')" -f4)"
+      window_secs="$(printf '%s' "$result" | cut -d"$(printf '\t')" -f5)"
+      say
+      [ "$backend" != "none" ] && break
+
+      if [ -n "$FIXED" ]; then say "$(basename "$FIXED") cannot keep up with live speech on this machine."
+      else say "No model keeps up with live speech on this machine."; fi
+      say
+      say "  1) Pick another model"
+      say "  2) Record audio only, no live transcript"
+      say "     The recording still works. The accurate transcript and notes are"
+      say "     produced later on the processing machine, which is where the"
+      say "     quality comes from anyway."
+      say "  3) Cancel"; say
+      case "$(ask "Select" "1")" in
+        2) backend=none; live=""; break ;;
+        3) say "cancelled"; exit 0 ;;
+        *) screen ;;
+      esac
+    done
   fi
 fi
 

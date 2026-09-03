@@ -254,12 +254,13 @@ $bench = $r.Lines
 $resultLine = $bench | Where-Object { $_ -match "^RESULT`t" } | Select-Object -Last 1
 $result = if ($resultLine) { "$resultLine" } else { "" }
 
-$liveModel = ""; $chunkSecs = 12; $backend = "cpu"
+$liveModel = ""; $chunkSecs = 12; $windowSecs = 30; $backend = "cpu"
 if ($result) {
     $rp = $result -split "`t"
     # fields: RESULT, backend, model, factor, interval, window
     if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2]; $backend = $rp[1] }
     if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
+    if ($rp.Count -ge 6) { $windowSecs = $rp[5] }
 }
 # the config is parsed as KEY="value" with forward slashes; keep a path usable
 if ($liveModel -and (Test-Path $liveModel)) { $liveModel = $liveModel -replace '\\', '/' }
@@ -309,6 +310,7 @@ LECTURE_NOTE_LANGUAGE="$lang"
 
 LECTURE_MODEL="$liveModel"
 LECTURE_CHUNK_SECS="$chunkSecs"
+LECTURE_WINDOW_SECS="$windowSecs"
 LECTURE_ASR_MODEL="$asrModel"
 LECTURE_ASR_COMPUTE="$asrCompute"
 LECTURE_LLM="qwen3:8b"
