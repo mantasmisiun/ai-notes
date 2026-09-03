@@ -228,10 +228,11 @@ $bench = $r.Lines
 $resultLine = $bench | Where-Object { $_ -match "^RESULT`t" } | Select-Object -Last 1
 $result = if ($resultLine) { "$resultLine" } else { "" }
 
-$liveModel = ""; $chunkSecs = 12
+$liveModel = ""; $chunkSecs = 12; $backend = "cpu"
 if ($result) {
     $rp = $result -split "`t"
-    if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2] }
+    # fields: RESULT, backend, model, factor, interval, window
+    if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2]; $backend = $rp[1] }
     if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
 }
 # the config is parsed as KEY="value" with forward slashes; keep a path usable
@@ -269,7 +270,7 @@ AUDIO_SCRATCH="$scratch"
 
 WANT_CAPTURE=1
 WANT_PROCESS=$wantProcess
-LECTURE_BACKEND="cpu"
+LECTURE_BACKEND="$backend"
 
 LECTURE_LANGUAGE="$lang"
 LECTURE_NOTE_LANGUAGE="$lang"
