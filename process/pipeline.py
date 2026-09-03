@@ -98,16 +98,21 @@ def main():
 
         free = gpu_free_mib()
 
-        # every LECTURE_* setting in config.sh reaches the children unchanged
-        env = dict(os.environ, **{k: v for k, v in cfg.items() if k.startswith("LECTURE_")},
-                   LECTURE_LANGUAGE=cfg.get("LECTURE_LANGUAGE", "en"),
-                   LECTURE_NOTE_LANGUAGE=cfg.get("LECTURE_NOTE_LANGUAGE", "en"),
-                   LECTURE_ASR_MODEL=cfg.get("LECTURE_ASR_MODEL", "large-v3"),
-                   LECTURE_ASR_COMPUTE=cfg.get("LECTURE_ASR_COMPUTE", "float16"),
-                   LECTURE_LLM=cfg.get("LECTURE_LLM", "gemma3:12b"),
-                   LECTURE_OLLAMA_HOST="127.0.0.1:11434",
-                   TRANSCRIPTIONS_DIR=cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"),
-                   UNIVERSITY_DIR=cfg.get("UNIVERSITY_DIR", "University"))
+        # Every LECTURE_* setting in config.sh reaches the children unchanged,
+        # then the defaults fill whatever it left out. Built in two steps: one
+        # dict() call given a key both as **mapping and as keyword raises
+        # "multiple values for keyword argument", and that is what killed
+        # every run right after the layout step, with the traceback in the
+        # journal and nothing in run.log.
+        env = dict(os.environ)
+        env.update({k: v for k, v in cfg.items() if k.startswith("LECTURE_")})
+        for k, v in (("LECTURE_LANGUAGE", "en"), ("LECTURE_NOTE_LANGUAGE", "en"),
+                     ("LECTURE_ASR_MODEL", "large-v3"), ("LECTURE_ASR_COMPUTE", "float16"),
+                     ("LECTURE_LLM", "gemma3:12b")):
+            env.setdefault(k, v)
+        env["LECTURE_OLLAMA_HOST"] = "127.0.0.1:11434"
+        env["TRANSCRIPTIONS_DIR"] = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
+        env["UNIVERSITY_DIR"] = cfg.get("UNIVERSITY_DIR", "University")
 
         # Only transcription waits for free VRAM: faster-whisper needs its own
         # room beside whatever Ollama holds. Summarising must not wait, because
@@ -308,4 +313,11 @@ def stage_retention(NOTES):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except Exception:
+        import traceback
+        log("CRASH: " + traceback.format_exc().strip().replace("\n", "\n    "))
+        raise
