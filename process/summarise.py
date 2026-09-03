@@ -313,7 +313,7 @@ def collect_notes(stamp, lectures_dir):
 
 
 def safe(name):
-    name = re.sub(r"[\\/:*?\"<>|#^\[\]]", "", name).strip(" .")
+    name = re.sub(r"[\\/:*?\"<>|#^\[\]]", " ", name).strip(" .")
     return re.sub(r"\s+", " ", name)[:70]
 
 
