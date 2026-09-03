@@ -289,17 +289,23 @@ Atsakyk tik pavadinimu ir nieko daugiau.
 def describe(area="", subject="", kind="", lang="en"):
     """A phrase naming what this recording actually is, so the model does not
     treat a job interview or a game review as a university lecture."""
+    # A Type without a Subject still says what the recording is. It used to
+    # be dropped, so "LRT Panorama" was summarised as "a recording".
     if lang == "lt":
         if kind and subject:
             return f"įrašo: {kind} tema „{subject}“"
         if subject:
             return f"įrašo tema „{subject}“"
+        if kind:
+            return f"įrašo ({kind})"
         return "įrašo"
     if kind and subject:
         art = "an" if kind[:1].lower() in "aeiou" else "a"
         return f"{art} {kind.lower()} session on {subject}" + (f", in {area}" if area else "")
     if subject:
         return f"a session on {subject}" + (f", in {area}" if area else "")
+    if kind:
+        return f"a recording ({kind})"
     return "a recorded session"
 
 
