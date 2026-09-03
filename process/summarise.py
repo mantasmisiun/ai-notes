@@ -248,7 +248,7 @@ def collect_notes(stamp, lectures_dir):
     """The student's own notes, from the file created alongside the recording
     and from anything already filed for this lecture in the module folder."""
     found = []
-    raw = os.path.join(NOTES, "raw notes", f"{stamp}.md")
+    raw = str(layout.raw_dir(NOTES) / f"{stamp}.md")
     if os.path.exists(raw):
         body = rawnote.body(raw)
         if body:
@@ -322,7 +322,7 @@ if own:
 
 # What this recording is has to be known before the prompts are built, so a
 # review or an interview is not summarised as though it were a lecture.
-raw_path = os.path.join(NOTES, "raw notes", f"{stamp}.md")
+raw_path = str(layout.raw_dir(NOTES) / f"{stamp}.md")
 table = rawnote.parse(raw_path) if os.path.exists(raw_path) else {}
 area, subject = table.get("Area", "").strip(), table.get("Subject", "").strip()
 kind = table.get("Type", "").strip() or (m["kind"] if m else "")
@@ -425,7 +425,7 @@ for ext in (".ogg", ".mp3", ".m4a", ".wav"):
         audio = os.path.relpath(p, VAULT).replace(os.sep, "/")
         break
 
-raw_link = f"{os.path.basename(NOTES)}/raw notes/{stamp}"   # already forward slashes
+raw_link = layout.link(os.path.basename(NOTES), layout.RAW, stamp)
 
 with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
@@ -444,7 +444,7 @@ with open(tmp, "w", encoding="utf-8") as f:
         f.write(f"module: {m['code']}\n")
     f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n---\n\n")
     f.write(note.rstrip() + "\n\n---\n\n")
-    f.write(f"Raw note: [[{raw_link}]]\n")
+    f.write(f"Your notes: [[{raw_link}]]\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")
@@ -469,7 +469,7 @@ if area and subject:
     except Exception as e:
         print(f"  could not update the timetable: {e}")
 
-# link the raw note back to the session it produced
+# link the your note back to the session it produced
 try:
     if os.path.exists(raw_path):
         rel_out = os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/")
