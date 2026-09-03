@@ -466,10 +466,16 @@ elif area and subject:
 else:
     dest_dir = str(layout.auto_dir(NOTES, "unfiled"))
 
-if kind and topic:
-    fname = f"{stamp} {kind} - {topic}.md"
+# The Type is typed by hand and goes into the file name, so it gets the same
+# cleaning as the title: "LRT Panorama/Paprika" made a directory that did not
+# exist and the note could not be written.
+kind_fs = safe(kind)
+if kind_fs and topic:
+    fname = f"{stamp} {kind_fs} - {topic}.md"
 elif topic:
     fname = f"{stamp} - {topic}.md"
+elif kind_fs:
+    fname = f"{stamp} {kind_fs}.md"
 else:
     fname = f"{stamp}.md"
 
