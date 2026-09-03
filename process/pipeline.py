@@ -21,7 +21,9 @@ sys.path.insert(0, str(HERE))
 import platform_support as ps
 import layout
 
-MIN_FREE_MIB    = int(os.environ.get("LECTURE_MIN_FREE_MIB", "7000"))
+# Room for whisper large-v3 in float16: about 3 GB of weights plus working
+# memory. Only transcription is gated on this; see main().
+MIN_FREE_MIB    = int(os.environ.get("LECTURE_MIN_FREE_MIB", "5000"))
 KEEP_AUDIO_DAYS = int(os.environ.get("LECTURE_KEEP_AUDIO_DAYS", "7"))
 MAX_TRIES       = 2      # then ask, rather than pinning the GPU forever
 RETRY_BACKOFF   = 300
@@ -95,9 +97,6 @@ def main():
             probe.release()
 
         free = gpu_free_mib()
-        if 0 <= free < MIN_FREE_MIB:
-            log(f"defer: only {free} MiB free")
-            return 0
 
         # every LECTURE_* setting in config.sh reaches the children unchanged
         env = dict(os.environ, **{k: v for k, v in cfg.items() if k.startswith("LECTURE_")},
@@ -110,7 +109,16 @@ def main():
                    TRANSCRIPTIONS_DIR=cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"),
                    UNIVERSITY_DIR=cfg.get("UNIVERSITY_DIR", "University"))
 
-        if stage_transcribe(NOTES, env, free):
+        # Only transcription waits for free VRAM: faster-whisper needs its own
+        # room beside whatever Ollama holds. Summarising must not wait, because
+        # what fills the card after a summary is Ollama keeping the very model
+        # the next summary needs; gating the whole run on free memory meant
+        # that a deleted note was never rewritten while the model stayed
+        # resident, and every minute logged "defer" instead.
+        if 0 <= free < MIN_FREE_MIB:
+            if needs_transcription(NOTES):
+                log(f"defer transcription: only {free} MiB free")
+        elif stage_transcribe(NOTES, env, free):
             return 0
         if stage_summarise(NOTES, VAULT, env):
             return 0
@@ -122,13 +130,27 @@ def main():
         lock.release()
 
 
+def audio_files(NOTES):
+    d = layout.auto_dir(NOTES, "audio")
+    return [a for a in sorted(d.iterdir()) if a.suffix.lower() in AUDIO_EXT] if d.is_dir() else []
+
+
+def needs_transcription(NOTES):
+    return any(not (layout.auto_dir(NOTES, "transcripts") / f"{a.stem}.md").exists()
+               and not (STATE / f"{a.stem}.tfailed").exists()
+               for a in audio_files(NOTES))
+
+
 def stage_transcribe(NOTES, env, free):
-    for audio in sorted(layout.auto_dir(NOTES, "audio").iterdir() if layout.auto_dir(NOTES, "audio").is_dir() else []):
-        if audio.suffix.lower() not in AUDIO_EXT:
-            continue
+    for audio in audio_files(NOTES):
         stamp = audio.stem
         transcript = layout.auto_dir(NOTES, "transcripts") / f"{stamp}.md"
         if transcript.exists():
+            continue
+        # A recording whose transcription fails is tried twice, then set aside
+        # with a marker. Retrying it every minute returned True each time and
+        # nothing behind it in the queue, summaries included, ever ran.
+        if (STATE / f"{stamp}.tfailed").exists():
             continue
 
         # A file can exist without having finished arriving, and nothing about
@@ -157,8 +179,17 @@ def stage_transcribe(NOTES, env, free):
             log(f"transcribe: done {stamp}")
             size_file.unlink(missing_ok=True)
         else:
-            log(f"transcribe: FAILED {stamp}")
             Path(str(transcript) + ".tmp").unlink(missing_ok=True)
+            tf = STATE / f"{stamp}.tfails"
+            n = int(tf.read_text().strip() or 0) + 1 if tf.exists() else 1
+            tf.write_text(str(n))
+            if n >= MAX_TRIES:
+                (STATE / f"{stamp}.tfailed").touch()
+                tf.unlink(missing_ok=True)
+                log(f"transcribe: FAILED {stamp} twice; set aside. Delete "
+                    f"{STATE / (stamp + '.tfailed')} to try again")
+            else:
+                log(f"transcribe: FAILED {stamp} (attempt {n})")
         return True
     return False
 
