@@ -50,7 +50,7 @@ CONF
 
 if [ -f "$CONF" ]; then source "$CONF"; fi
 d_lang="${LECTURE_LANGUAGE:-en}"; d_note="${LECTURE_NOTE_LANGUAGE:-en}"
-d_llm="${LECTURE_LLM:-llama3.1:8b}"; d_vault="${VAULT:-$HOME/Documents/Obsidian}"
+d_llm="${LECTURE_LLM:-qwen3:8b}"; d_vault="${VAULT:-$HOME/Documents/Obsidian}"
 d_tr="${TRANSCRIPTIONS_DIR:-Transcriptions}"; d_uni="${UNIVERSITY_DIR:-University}"
 d_scratch="${AUDIO_SCRATCH:-$HOME/lecture-recordings}"
 
@@ -271,11 +271,11 @@ if [ "$want_process" = 1 ]; then
 
   say "Model for writing the notes:"; say
   if [ "$note_lang" = "en" ]; then
-    say "  1) Llama 3.1    [recommended]  strong English, weaker elsewhere"
+    say "  1) Llama 3.1                   fluent English, but drops and inverts facts"
     say "  2) Gemma                       better multilingual coverage"
-    say "  3) Qwen 3                      100+ languages, best multilingual"
+    say "  3) Qwen 3        [recommended]  keeps the most detail, 100+ languages"
   else
-    say "  1) Llama 3.1                   strong English, weaker elsewhere"
+    say "  1) Llama 3.1                   fluent English, but drops and inverts facts"
     say "  2) Gemma        [recommended]  better multilingual coverage"
     say "  3) Qwen 3        [recommended]  100+ languages, best multilingual"
   fi
@@ -290,7 +290,7 @@ if [ "$want_process" = 1 ]; then
   usable=$(( VRAM_MIB - 2000 - 1200 ))
   say "  ${usable} MiB usable once the desktop and the context window are allowed for."
   say
-  dflt=1; [ "$note_lang" != "en" ] && dflt=2
+  dflt=3; [ "$note_lang" != "en" ] && dflt=2
   case "$(ask "Select" "$dflt")" in
     2) llm="gemma2:9b" ;;
     3) if [ "$usable" -ge 9500 ]; then llm="qwen3:14b"; else llm="qwen3:8b"; fi ;;

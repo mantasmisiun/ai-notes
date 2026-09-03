@@ -40,13 +40,23 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write(f"duration: {stamp(info.duration)}\n")
     f.write(f"generated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n")
     f.write("---\n\n")
+    # Every paragraph ends with an Obsidian block id derived from its time
+    # marker, ^t0-03-08 for [0:03:08], so a note can link to the exact passage
+    # it was written from: [[transcript#^t0-03-08|0:03:08]].
     last = -999
+    open_id = None
     for s in segments:
         if s.start - last > 45:            # a time marker roughly every 45s
-            f.write(f"\n\n**[{stamp(s.start)}]** ")
+            if open_id:
+                f.write(f"^{open_id}")
+            label = stamp(s.start)
+            open_id = "t" + label.replace(":", "-")
+            f.write(f"\n\n**[{label}]** ")
             last = s.start
         f.write(s.text.strip() + " ")
         f.flush()
+    if open_id:
+        f.write(f"^{open_id}")
     f.write("\n")
 
 os.replace(tmp, out)
