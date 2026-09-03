@@ -217,11 +217,11 @@ if [ "$want_process" = 1 ]; then
   if [ "$note_lang" = "en" ]; then
     say "  1) Llama 3.1    [recommended]  strong English, weaker elsewhere"
     say "  2) Gemma                       better multilingual coverage"
-    say "  3) Qwen                        better multilingual coverage"
+    say "  3) Qwen 3                      100+ languages, best multilingual"
   else
     say "  1) Llama 3.1                   strong English, weaker elsewhere"
     say "  2) Gemma        [recommended]  better multilingual coverage"
-    say "  3) Qwen         [recommended]  better multilingual coverage"
+    say "  3) Qwen 3        [recommended]  100+ languages, best multilingual"
   fi
   say "  4) Other, enter an Ollama tag yourself"; say
   say "These can be changed later by re-running this installer and choosing"
@@ -237,7 +237,7 @@ if [ "$want_process" = 1 ]; then
   dflt=1; [ "$note_lang" != "en" ] && dflt=2
   case "$(ask "Select" "$dflt")" in
     2) llm="gemma2:9b" ;;
-    3) if [ "$usable" -ge 9500 ]; then llm="qwen2.5:14b"; else llm="qwen2.5:7b"; fi ;;
+    3) if [ "$usable" -ge 9500 ]; then llm="qwen3:14b"; else llm="qwen3:8b"; fi ;;
     4) llm="$(ask "Ollama tag" "$d_llm")" ;;
     *) llm="llama3.1:8b" ;;
   esac
