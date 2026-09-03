@@ -75,7 +75,15 @@ CHILD = r"""
 import json, os, sys, time
 from faster_whisper import WhisperModel
 model, device, wav, lang, mode = sys.argv[1:6]
-compute = "float16" if device == "cuda" else "int8"
+# float16 large-v3 peaks near 4.5 GB. On a card with less than about 6 GB
+# free it will not fit, so quantise rather than fail: a quantised large-v3
+# still beats dropping to medium.
+if device != "cuda":
+    compute = "int8"
+elif int(os.environ.get("VRAM_MIB", "0") or 0) >= 6000:
+    compute = "float16"
+else:
+    compute = "int8_float16"
 m = WhisperModel(model, device=device, compute_type=compute,
                  cpu_threads=os.cpu_count() or 4)      # download happens here, untimed
 if mode == "fetch":                                    # download only, untimed
@@ -93,10 +101,12 @@ def time_faster_whisper(model, device):
     enough to trigger the OOM killer on a 16 GB laptop."""
     with Spinner(f"downloading {label(model)}"):
         subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "fetch"],
-                       capture_output=True, text=True, check=True)
+                       capture_output=True, text=True, check=True,
+                       env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
     with Spinner(f"benchmarking {label(model)} on {device}"):
         r = subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "run"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True,
+                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
     if r.returncode != 0:
         raise RuntimeError(r.stderr.strip().splitlines()[-1] if r.stderr else "failed")
     out = json.loads(r.stdout.strip().splitlines()[-1])
@@ -161,11 +171,16 @@ if FIXED:
     ladder = [FIXED]
     print(f"  using {os.path.basename(FIXED)}, the model for this language\n")
 else:
+    # The gate is free VRAM on a discrete card, not its total size. large-v3 at
+    # int8_float16 peaks near 3 GB, so 4 GB free holds it. A laptop whose
+    # display runs on an integrated GPU leaves the whole discrete card free,
+    # and a total-size threshold would have excluded a card that fits.
     ladder = []
-    if DISCRETE and VRAM_MIB >= 6000:
+    if DISCRETE and VRAM_MIB >= 3800:
         ladder.append("large-v3")
     else:
-        print("  large-v3 skipped: needs a discrete GPU with 6 GB or more\n")
+        print(f"  large-v3 skipped: needs a discrete GPU with about 4 GB free, "
+              f"this has {VRAM_MIB} MiB\n")
     ladder += [f"medium{suffix}", f"small{suffix}"]
 
 chosen = None

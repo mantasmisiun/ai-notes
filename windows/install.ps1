@@ -102,9 +102,9 @@ Step "Lecture language"
 Say "  1) English"
 Say "  2) Lithuanian"
 Say ""
-$lang = "en"; $liveModel = "small.en"
+$lang = "en"
 if ((Ask "Select" "1") -eq "2") {
-    $lang = "lt"; $liveModel = "small"
+    $lang = "lt"
     Say ""
     Say "  Note: Lithuanian on Windows uses the stock multilingual model."
     Say "  The better Lithuanian model needs a conversion step that is Linux only."
@@ -123,6 +123,65 @@ if (-not (Test-Path $vault)) {
 }
 $vaultFwd = $vault -replace '\\', '/'
 $scratch = "$env:LOCALAPPDATA\lecture-pipeline" -replace '\\', '/'
+
+# ---- environment -----------------------------------------------------------
+Step "Building the capture environment"
+if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
+    python -m venv "$Root\capture\venv"
+}
+& "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
+& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
+Say "  done"
+
+Step "Measuring this machine"
+Say "  Trying the largest model first and falling back only if it cannot keep"
+Say "  up. Models are downloaded as they are needed, so this takes a while."
+Say ""
+
+# gpu_probe reports vendor, name, FREE VRAM and whether the card is discrete
+$probe = & "$Root\capture\venv\Scripts\python.exe" "$Root\shared\gpu_probe.py"
+$parts = $probe -split "`t"
+$vram = 0; $discrete = 0; $cuda = 0
+if ($parts.Count -ge 4) {
+    $vram = [int]$parts[2]
+    $discrete = [int]$parts[3]
+    if ($parts[0] -eq "nvidia") { $cuda = 1 }
+}
+
+$env:HAS_CUDA = "$cuda"
+$env:GPU_DISCRETE = "$discrete"
+$env:VRAM_MIB = "$vram"
+$env:MIN_LIVE_FACTOR = "1.2"
+
+$bench = & "$Root\capture\venv\Scripts\python.exe" "$Root\lib\benchmark.py" `
+             $lang "$Root\samples" "$Root\.bench" 2>&1
+$bench | ForEach-Object { Write-Host $_ }
+$result = ($bench | Select-String -Pattern "^RESULT ").ToString()
+
+$liveModel = ""
+if ($result) {
+    $rp = $result -split " "
+    if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2] }
+}
+
+if (-not $liveModel) {
+    Say ""
+    Say "Nothing on this machine keeps up with live transcription in this"
+    Say "language. Recording still works and the notes are produced later on a"
+    Say "machine that can."
+    Say ""
+    $liveModel = "none"
+}
+
+if ($wantProcess -eq 1) {
+    Step "Building the processing environment"
+    if (-not (Test-Path "$Root\process\venv\Scripts\python.exe")) {
+        python -m venv "$Root\process\venv"
+    }
+    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
+    Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
+    Say "  Then set OLLAMA_KEEP_ALIVE=30s as a user environment variable."
+}
 
 # ---- config ----------------------------------------------------------------
 Step "Writing config.sh"
@@ -146,33 +205,6 @@ LECTURE_ASR_COMPUTE="float16"
 LECTURE_LLM="qwen3:8b"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
 Say "  done"
-
-# ---- environment -----------------------------------------------------------
-Step "Building the capture environment"
-if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
-    python -m venv "$Root\capture\venv"
-}
-& "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
-& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
-Say "  done"
-
-Step "Fetching the live model ($liveModel)"
-Say "  a few hundred MB, this takes a minute"
-& "$Root\capture\venv\Scripts\python.exe" -c @"
-from faster_whisper import WhisperModel
-WhisperModel('$liveModel', device='cpu', compute_type='int8')
-"@
-Say "  done"
-
-if ($wantProcess -eq 1) {
-    Step "Building the processing environment"
-    if (-not (Test-Path "$Root\process\venv\Scripts\python.exe")) {
-        python -m venv "$Root\process\venv"
-    }
-    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
-    Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
-    Say "  Then set OLLAMA_KEEP_ALIVE=30s as a user environment variable."
-}
 
 # ---- vault layout and a shortcut -------------------------------------------
 Step "Preparing the vault and a shortcut"
