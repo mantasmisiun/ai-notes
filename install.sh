@@ -9,6 +9,20 @@ source "$ROOT/lib/deps.sh"
 CONF="$ROOT/config.sh"
 MIN_LIVE_FACTOR="${MIN_LIVE_FACTOR:-1.2}"
 say() { printf '%s\n' "$*"; }
+
+# Clear between steps so each question starts at the top of an empty screen,
+# with a one-line reminder of what has been decided so far. Output you still
+# need to read, the benchmark especially, survives until the next question.
+DECIDED=""
+decided() { DECIDED="${DECIDED:+$DECIDED  ·  }$*"; }
+screen() {
+  if [ -t 1 ]; then
+    command -v clear >/dev/null 2>&1 && clear || printf '\033[2J\033[H'
+  fi
+  say "lecture-pipeline installer"
+  if [ -n "$DECIDED" ]; then say "$DECIDED"; fi
+  say
+}
 ask() { local p="$1" d="${2:-}" r; read -r -p "$p${d:+ [$d]}: " r </dev/tty; printf '%s' "${r:-$d}"; }
 
 write_config() {
@@ -39,7 +53,7 @@ d_llm="${LECTURE_LLM:-llama3.1:8b}"; d_vault="${VAULT:-$HOME/Documents/Obsidian}
 d_tr="${TRANSCRIPTIONS_DIR:-Transcriptions}"; d_uni="${UNIVERSITY_DIR:-University}"
 d_scratch="${AUDIO_SCRATCH:-$HOME/lecture-recordings}"
 
-say "lecture-pipeline installer"; say
+screen
 say "Detected:"
 say "  CPU     $CPU_NAME, $CPU_THREADS threads"
 say "  GPU     ${GPU_NAME:-none}"
@@ -63,6 +77,7 @@ if [ -f "$CONF" ]; then
 fi
 
 # ---- Q1: components --------------------------------------------------------
+screen
 if [ "$models_only" = 1 ]; then
   want_capture="${WANT_CAPTURE:-1}"; want_process="${WANT_PROCESS:-0}"
 elif [ "$HAS_CUDA" = 1 ] && [ "$VRAM_MIB" -ge 6000 ]; then
@@ -92,6 +107,12 @@ fi
 say
 
 # ---- Q2: language ----------------------------------------------------------
+if   [ "$want_capture" = 1 ] && [ "$want_process" = 1 ]; then what="both halves"
+elif [ "$want_process" = 1 ]; then what="processing only"
+else what="capture only"
+fi
+decided "$what"
+screen
 if [ "$models_only" = 1 ]; then
   lang="$d_lang"; note_lang="$d_note"
 else
@@ -116,6 +137,14 @@ fi
 say
 
 # ---- Q3: paths -------------------------------------------------------------
+case "$lang" in
+  en) langname="English" ;;
+  lt) langname="Lithuanian" ;;
+  *)  langname="$lang" ;;
+esac
+decided "$langname"
+if [ "$note_lang" != "$lang" ]; then decided "notes in English"; fi
+screen
 if [ "$models_only" = 1 ]; then
   vault="$d_vault"; tr_dir="$d_tr"; uni_dir="$d_uni"; scratch="$d_scratch"
 else
@@ -141,6 +170,9 @@ say
 # Lithuanian has one model worth using. The stock multilingual ones mangle word
 # endings badly enough that the transcript is hard to read, so there is no
 # choice to offer: it is prepared and used for both passes.
+decided "$(basename "$vault")"
+screen
+
 LT_MODEL=""
 if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
   say "Lithuanian uses a dedicated model, paprika-whisper-lt. It recognises"
