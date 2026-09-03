@@ -4,7 +4,7 @@
 Writes to a .tmp and renames, so an interrupted run never leaves a file that
 looks finished to the next pass.
 """
-import os, sys, datetime
+import os, re, sys, datetime
 
 import sys as _sys
 _sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
