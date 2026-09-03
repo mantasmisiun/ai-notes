@@ -25,7 +25,7 @@ AUDIO_EXT = (".ogg", ".mp3", ".m4a", ".wav")
 
 def audio_for(NOTES, stamp):
     for ext in AUDIO_EXT:
-        p = NOTES / "audio" / f"{stamp}{ext}"
+        p = NOTES / "auto" / "audio" / f"{stamp}{ext}"
         if p.exists():
             return p
     return None
@@ -104,7 +104,7 @@ def main():
 
     cfg = read_config(ROOT / "config.sh")
     VAULT, NOTES, _ = notes_dirs(cfg)
-    transcript = NOTES / "transcripts" / f"{stamp}.md"
+    transcript = NOTES / "auto" / "transcripts" / f"{stamp}.md"
     if transcript.exists():
         return 0                                   # already done, nothing to do
 

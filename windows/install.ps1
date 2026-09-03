@@ -316,7 +316,8 @@ LECTURE_LLM="qwen3:8b"
 
 # ---- vault layout and a shortcut -------------------------------------------
 Step "Preparing the vault and a shortcut"
-foreach ($d in @("live", "transcripts", "audio", "unfiled", "raw notes")) {
+# generated folders under auto\, the user's raw notes beside them
+foreach ($d in @("auto\live", "auto\transcripts", "auto\audio", "auto\unfiled", "raw notes")) {
     New-Item -ItemType Directory -Force "$vault\Transcriptions\$d" | Out-Null
 }
 New-Item -ItemType Directory -Force "$vault\University" | Out-Null

@@ -24,24 +24,39 @@ PROMPTS = {
 Time markers such as [0:03:08] show where each paragraph of the transcript
 starts.
 
-Write **detailed notes** on this part, not a summary. Someone who missed the
-session should be able to follow the substance from your notes alone.
+Turn this part into study notes a reader can follow without the recording.
+Work topic by topic: start a new block whenever the subject changes, which is
+usually every one to four minutes of speech. Every block has exactly this
+shape:
 
-Write one short paragraph per point made, in the order the points were made.
-**Begin every paragraph with the time marker of where that point starts,
-copied exactly from the transcript**, for example `[0:03:08] The speaker
-argues that...`. Never invent a marker: use the nearest one before the point.
+### Title of the topic
+[0:03:08]
+- key point
+- key point
+One short paragraph, only where the bullets cannot carry a chain of reasoning,
+a worked example or a definition that needs its context.
 
-Keep: definitions in the words used, numbers, names, dates, formulas, worked
-examples with their steps, the reasoning behind claims, and anything flagged as
-important or examinable. Attribute claims to whoever made them, the speaker,
-an interviewee, a questioner, rather than stating them as fact. Where a name is
-spelled several ways, use the most frequent spelling throughout.
+Rules for the blocks:
+- The title names the specific content in three to eight words. Never
+  "Introduction", "Discussion" or "Overview".
+- The second line is the time marker where the topic starts, copied exactly
+  from the transcript. Never invent one; use the nearest marker before the
+  topic.
+- Two to six key points, each a short phrase or one sentence. Write the content
+  itself, not a narration of it: "Nasson pled guilty on 3 June 2022", never
+  "The speaker says that Nasson pled guilty". Name who said something only when
+  it matters who did, such as a claim by an interviewee or a lecturer's
+  warning.
+- Keep numbers, dates, names, definitions in the words used, formulas, worked
+  steps, and anything flagged as important or examinable. Put a key term in
+  **bold** the first time it appears.
+- Use one spelling per name, the most frequent one in the transcript.
+- Skip filler, repetition, advertising and administrative chatter. A passage
+  that says nothing new gets no block.
 
-Drop only: filler, repetition, digressions, and administrative chatter.
-
-Do not compress for brevity. Length should follow the material. No heading, no
-introduction, no conclusion, and no structure that is not in the material.
+Do not compress for brevity: every topic that was covered gets a block, and
+length follows the material. Output only the blocks, no heading above them,
+no introduction, no conclusion.
 
 The text is machine-transcribed, so some words are wrong and there may be no
 punctuation. Read through that and write about the subject matter. **Never
@@ -107,26 +122,37 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
 žymos, tokios kaip [0:03:08], rodo, kur prasideda kiekviena transkripcijos
 pastraipa.
 
-Parašyk **išsamias pastabas** apie šią dalį, o ne santrauką. Žmogus, kuris
-nedalyvavo, turėtų iš tavo pastabų suprasti esmę.
+Paversk šią dalį konspektu, kurį galima sekti be įrašo. Dirbk tema po temos:
+pradėk naują bloką kaskart, kai keičiasi tema, paprastai kas vieną–keturias
+kalbos minutes. Kiekvienas blokas yra tiksliai tokios formos:
 
-Rašyk po vieną trumpą pastraipą kiekvienai išsakytai minčiai, ta tvarka, kuria
-jos buvo išsakytos. **Kiekvieną pastraipą pradėk laiko žyma, nuo kurios ta
-mintis prasideda, nukopijuota tiksliai iš transkripcijos**, pavyzdžiui
-`[0:03:08] Dėstytojas teigia, kad...`. Niekada nekurk žymos pats: naudok
-artimiausią prieš tą mintį esančią.
+### Temos pavadinimas
+[0:03:08]
+- esminis punktas
+- esminis punktas
+Viena trumpa pastraipa, tik ten, kur punktai negali perteikti argumentų
+grandinės, išspręsto pavyzdžio ar apibrėžimo, kuriam reikia konteksto.
 
-Palik: apibrėžimus tokius, kokie pasakyti, skaičius, pavadinimus, datas,
-formules, išspręstus pavyzdžius su žingsniais, argumentus ir viską, kas
-įvardyta kaip svarbu ar egzaminui. Teiginius priskirk tam, kas juos išsakė,
-dėstytojui, pašnekovui, klausiančiajam, o ne pateik kaip faktus. Jei vardas
-rašomas keliais būdais, visur naudok dažniausią.
+Blokų taisyklės:
+- Pavadinimas įvardija konkretų turinį trimis–aštuoniais žodžiais. Niekada
+  „Įžanga“, „Aptarimas“ ar „Apžvalga“.
+- Antra eilutė yra laiko žyma, nuo kurios tema prasideda, nukopijuota
+  tiksliai iš transkripcijos. Niekada nekurk jos pats; naudok artimiausią
+  prieš temą esančią.
+- Nuo dviejų iki šešių punktų, kiekvienas trumpa frazė arba vienas sakinys.
+  Rašyk pačią mintį, o ne jos atpasakojimą: „Nasson prisipažino kaltu 2022 m.
+  birželio 3 d.“, niekada „Kalbėtojas sako, kad Nasson prisipažino“. Nurodyk,
+  kas pasakė, tik kai tai svarbu, pavyzdžiui pašnekovo teiginį ar dėstytojo
+  įspėjimą.
+- Palik skaičius, datas, vardus, apibrėžimus tokius, kokie pasakyti, formules,
+  sprendimo žingsnius ir viską, kas įvardyta kaip svarbu ar egzaminui. Esminį
+  terminą pirmą kartą **paryškink**.
+- Kiekvienam vardui viena rašyba, dažniausia transkripcijoje.
+- Praleisk tuščiažodžiavimą, pasikartojimus, reklamą ir organizacinius
+  dalykus. Ištrauka, kuri nepasako nieko naujo, bloko negauna.
 
-Išmesk tik: tuščiažodžiavimą, pasikartojimus, nukrypimus ir organizacinius
-dalykus.
-
-Netrumpink dėl trumpumo. Ilgis turi atitikti medžiagą. Be antraštės, įžangos
-ar išvadų.
+Netrumpink dėl trumpumo: kiekviena aptarta tema gauna bloką, o ilgis atitinka
+medžiagą. Išvesk tik blokus, be antraštės virš jų, be įžangos, be išvadų.
 
 Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
 skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada

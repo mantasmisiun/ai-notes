@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "shared"))
 sys.path.insert(0, str(HERE))
 
 import platform_support as ps
+import layout
 
 MIN_FREE_MIB    = int(os.environ.get("LECTURE_MIN_FREE_MIB", "7000"))
 KEEP_AUDIO_DAYS = int(os.environ.get("LECTURE_KEEP_AUDIO_DAYS", "7"))
@@ -69,15 +70,20 @@ def main():
     cfg     = read_config()
     VAULT   = Path(cfg["VAULT"])
     NOTES   = VAULT / cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
-    for sub in ("live", "transcripts", "audio", "unfiled", "raw notes"):
-        (NOTES / sub).mkdir(parents=True, exist_ok=True)
-
     lock = ps.Lock(STATE / "run.lock")
     if not lock.acquire():
         log("skip: another run holds the lock")
         return 0
 
     try:
+        # Generated folders live under auto/. An old flat vault is moved and its
+        # links rewritten once; markers that still name the old note paths are
+        # repaired so nothing is summarised twice.
+        layout.migrate(NOTES, VAULT, log=log)
+        layout.ensure(NOTES)
+        layout.fix_markers(NOTES, STATE)
+        layout.write_about(NOTES, KEEP_AUDIO_DAYS)
+
         # Never process during a recording on this same machine: the live
         # transcript has a person waiting on it and wins the GPU.
         rec = ps.state_dir("lecture-pipeline") / "record.lock"
@@ -93,12 +99,13 @@ def main():
             log(f"defer: only {free} MiB free")
             return 0
 
-        env = dict(os.environ,
+        # every LECTURE_* setting in config.sh reaches the children unchanged
+        env = dict(os.environ, **{k: v for k, v in cfg.items() if k.startswith("LECTURE_")},
                    LECTURE_LANGUAGE=cfg.get("LECTURE_LANGUAGE", "en"),
                    LECTURE_NOTE_LANGUAGE=cfg.get("LECTURE_NOTE_LANGUAGE", "en"),
                    LECTURE_ASR_MODEL=cfg.get("LECTURE_ASR_MODEL", "large-v3"),
                    LECTURE_ASR_COMPUTE=cfg.get("LECTURE_ASR_COMPUTE", "float16"),
-                   LECTURE_LLM=cfg.get("LECTURE_LLM", "llama3.1:8b"),
+                   LECTURE_LLM=cfg.get("LECTURE_LLM", "gemma3:12b"),
                    LECTURE_OLLAMA_HOST="127.0.0.1:11434",
                    TRANSCRIPTIONS_DIR=cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"),
                    UNIVERSITY_DIR=cfg.get("UNIVERSITY_DIR", "University"))
@@ -116,11 +123,11 @@ def main():
 
 
 def stage_transcribe(NOTES, env, free):
-    for audio in sorted((NOTES / "audio").iterdir() if (NOTES / "audio").is_dir() else []):
+    for audio in sorted(layout.auto_dir(NOTES, "audio").iterdir() if layout.auto_dir(NOTES, "audio").is_dir() else []):
         if audio.suffix.lower() not in AUDIO_EXT:
             continue
         stamp = audio.stem
-        transcript = NOTES / "transcripts" / f"{stamp}.md"
+        transcript = layout.auto_dir(NOTES, "transcripts") / f"{stamp}.md"
         if transcript.exists():
             continue
 
@@ -157,7 +164,9 @@ def stage_transcribe(NOTES, env, free):
 
 
 def stage_summarise(NOTES, VAULT, env):
-    for transcript in sorted((NOTES / "transcripts").glob("*.md")):
+    for transcript in sorted(layout.auto_dir(NOTES, "transcripts").glob("*.md")):
+        if transcript.name.startswith("_"):
+            continue                       # _about.md is not a transcript
         stamp  = transcript.stem
         marker = STATE / f"{stamp}.done"
         if marker.exists():
@@ -244,7 +253,7 @@ def stage_retire(NOTES):
         note  = Path(marker.read_text().strip())
         if not note.exists():
             continue
-        for live in (NOTES / "live").glob(f"{stamp}*.md"):
+        for live in layout.auto_dir(NOTES, "live").glob(f"{stamp}*.md"):
             if note.stat().st_size > 400:
                 live.unlink(missing_ok=True)
                 log(f"finalise: removed live note for {stamp}")
@@ -261,7 +270,7 @@ def stage_retention(NOTES):
         if age < KEEP_AUDIO_DAYS:
             continue
         for ext in AUDIO_EXT:
-            a = NOTES / "audio" / f"{stamp}{ext}"
+            a = layout.auto_dir(NOTES, "audio") / f"{stamp}{ext}"
             if a.exists():
                 a.unlink()
                 log(f"retention: deleted {a.name} after {age}d")

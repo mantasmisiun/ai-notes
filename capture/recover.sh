@@ -10,9 +10,9 @@ stamp=$(basename "$raw" .pcm)
 wav="/tmp/$stamp.wav"
 
 ffmpeg -loglevel error -y -f s16le -ar 16000 -ac 1 -i "$raw" "$wav"
-mkdir -p "$NOTES/audio"
+mkdir -p "$NOTES/auto/audio"
 ffmpeg -loglevel error -y -f s16le -ar 16000 -ac 1 -i "$raw" \
-       -c:a libopus -b:a 24k "$NOTES/audio/$stamp.ogg"
+       -c:a libopus -b:a 24k "$NOTES/auto/audio/$stamp.ogg"
 
 note="$NOTES/$stamp Lecture (recovered).md"
 {
@@ -38,6 +38,6 @@ echo "---" >> "$note"
 echo >> "$note"
 echo "## Recording" >> "$note"
 echo >> "$note"
-echo "![[$TRANSCRIPTIONS_DIR/audio/$stamp.ogg]]" >> "$note"
+echo "![[$TRANSCRIPTIONS_DIR/auto/audio/$stamp.ogg]]" >> "$note"
 rm -f "$wav" "$raw"
 echo "recovered: $note"

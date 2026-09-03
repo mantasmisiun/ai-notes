@@ -59,11 +59,11 @@ for lect_dir in sorted(candidates):
             continue
 
         live = None
-        for cand in glob.glob(os.path.join(NOTES, "live", stamp + "*.md")):
+        for cand in glob.glob(os.path.join(NOTES, "auto", "live", stamp + "*.md")):
             live = cand
             break
-        tr = first_existing(os.path.join(NOTES, "transcripts"), stamp, [".md"])
-        au = first_existing(os.path.join(NOTES, "audio"), stamp,
+        tr = first_existing(os.path.join(NOTES, "auto", "transcripts"), stamp, [".md"])
+        au = first_existing(os.path.join(NOTES, "auto", "audio"), stamp,
                             [".ogg", ".mp3", ".m4a", ".wav"])
 
         rawn = os.path.join(NOTES, "raw notes", stamp + ".md")

@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "shared"))
 sys.path.insert(0, str(HERE))
 
 import platform_support as ps
+import layout
 import rawnote
 import timetable
 
@@ -103,19 +104,23 @@ def main():
     kind  = entry["kind"] if entry else ""
     label = f"{code} {kind}".strip() or "unscheduled"
 
-    for sub in ("live", "transcripts", "audio", "unfiled", "raw notes"):
-        (NOTES / sub).mkdir(parents=True, exist_ok=True)
+    # Generated folders live under auto/, yours beside it. A vault in the old
+    # flat layout is moved and its links rewritten here, once, on whichever
+    # machine sees it first.
+    layout.migrate(NOTES, VAULT, log=say)
+    layout.ensure(NOTES)
+    layout.write_about(NOTES, int(cfg.get("LECTURE_KEEP_AUDIO_DAYS", "7") or 7))
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
-    note    = NOTES / "live" / (f"{stamp} {code} {kind}.md" if code else f"{stamp}.md")
-    mynotes = NOTES / "raw notes" / f"{stamp}.md"
+    note    = layout.auto_dir(NOTES, "live") / (f"{stamp} {code} {kind}.md" if code else f"{stamp}.md")
+    mynotes = layout.raw_dir(NOTES) / f"{stamp}.md"
     raw     = SCRATCH / f"{stamp}.pcm"
-    ogg     = NOTES / "audio" / f"{stamp}.ogg"
+    ogg     = layout.auto_dir(NOTES, "audio") / f"{stamp}.ogg"
 
     tr = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
-    note_link    = f"{tr}/live/{note.stem}"
-    mynotes_link = f"{tr}/raw notes/{mynotes.stem}"
-    audio_link   = f"{tr}/audio/{stamp}.ogg"
+    note_link    = layout.link(tr, "live", note.stem)
+    mynotes_link = layout.link(tr, "raw notes", mynotes.stem)
+    audio_link   = layout.link(tr, "audio", f"{stamp}.ogg")
 
     front = [f'stamp: "{stamp}"', f"date: {datetime.now():%Y-%m-%d}",
              f"time: {datetime.now():%H:%M}", "type: lecture-live"]
