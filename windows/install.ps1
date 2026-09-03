@@ -8,6 +8,7 @@
 #   .\windows\install.ps1
 
 $ErrorActionPreference = "Stop"
+$env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
@@ -35,7 +36,12 @@ function Native([string]$exe, [string[]]$argv) {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
     $lines = @()
-    & $exe @argv 2>&1 | ForEach-Object { $t = "$_"; Write-Host "  $t"; $lines += $t }
+    & $exe @argv 2>&1 | ForEach-Object {
+        # A stderr line arrives as an ErrorRecord; stringifying that gives the
+        # exception's type name rather than the text. Unwrap it.
+        $t = if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" }
+        if ($t.Trim()) { Write-Host "  $t"; $lines += $t }
+    }
     $code = $LASTEXITCODE
     $ErrorActionPreference = $prev
     return @{ Lines = $lines; Code = $code }

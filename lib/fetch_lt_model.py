@@ -11,6 +11,7 @@ deletes it. The result is cached and reused.
 Prints the model directory on success.
 """
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -64,22 +65,27 @@ def main():
     out.parent.mkdir(parents=True, exist_ok=True)
 
     venv.create(tmp_env, with_pip=True)
-    pip = tmp_env / "bin" / "pip"
-    if not pip.exists():
-        pip = tmp_env / "Scripts" / "pip.exe"
-    run = lambda *a: subprocess.run(list(a), check=True)
-    run(str(pip), "install", "-q", "--upgrade", "pip")
-    run(str(pip), "install", "-q", "torch", "--index-url",
-        "https://download.pytorch.org/whl/cpu")
-    run(str(pip), "install", "-q", "transformers", "ctranslate2")
+    py = tmp_env / "bin" / "python"
+    if not py.exists():
+        py = tmp_env / "Scripts" / "python.exe"
+
+    # Always `python -m pip`, never pip.exe. On Windows pip refuses to upgrade
+    # itself when invoked through its own executable, because it cannot replace
+    # a file that is running. The version-check notice is silenced because it
+    # is noise in an installer and it also goes to stderr.
+    env = dict(os.environ, PIP_DISABLE_PIP_VERSION_CHECK="1")
+    run = lambda *a: subprocess.run([str(py), "-m", "pip"] + list(a), check=True, env=env)
+    run("install", "-q", "--upgrade", "pip")
+    run("install", "-q", "torch", "--index-url", "https://download.pytorch.org/whl/cpu")
+    run("install", "-q", "transformers", "ctranslate2")
 
     conv = tmp_env / "bin" / "ct2-transformers-converter"
     if not conv.exists():
         conv = tmp_env / "Scripts" / "ct2-transformers-converter.exe"
     shutil.rmtree(out, ignore_errors=True)
-    run(str(conv), "--model", REPO, "--output_dir", str(out),
-        "--copy_files", "tokenizer.json", "tokenizer_config.json",
-        "--quantization", "float16")
+    subprocess.run([str(conv), "--model", REPO, "--output_dir", str(out),
+                    "--copy_files", "tokenizer.json", "tokenizer_config.json",
+                    "--quantization", "float16"], check=True, env=env)
 
     (out / "preprocessor_config.json").write_text(
         json.dumps(PREPROCESSOR, indent=2), encoding="utf-8")
