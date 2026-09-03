@@ -191,7 +191,13 @@ In PowerShell:
 winget install Git.Git
 winget install Python.Python.3.12
 winget install Gyan.FFmpeg
+winget install Microsoft.VCRedist.2015+.x64
 ```
+
+The Visual C++ redistributable is not optional. CTranslate2's Windows wheels
+are built with MSVC, and without it importing faster-whisper fails with
+`Could not find module ctranslate2.dll (or one of its dependencies)`, which
+reads like a missing file when the file is present.
 
 Reopen PowerShell so PATH updates, then check a microphone is visible. Nothing
 below works without this. It exits with an error by design and prints the
