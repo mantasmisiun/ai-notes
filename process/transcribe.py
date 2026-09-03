@@ -27,10 +27,12 @@ model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
 # in a noisy passage feeds itself into the next segment and the next, and a
 # five-minute news broadcast came back with "suvelnių" forty times in a row.
 # The live worker already runs without it.
+import asr_prompt
 segments, info = model.transcribe(
     audio, language=LANGUAGE, vad_filter=True,
     vad_parameters=dict(min_silence_duration_ms=500),
-    beam_size=5, condition_on_previous_text=False)
+    beam_size=5, condition_on_previous_text=False,
+    hotwords=asr_prompt.initial_prompt(MODEL, LANGUAGE) or None)
 
 # The same guards as the live worker: Whisper's own rule for narrated silence,
 # compression ratio for repetition, and a word-level check for a stretched
@@ -58,6 +60,9 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write("type: lecture-transcript-accurate\n")
     f.write(f"model: {MODEL}\n")
     f.write(f"duration: {stamp(info.duration)}\n")
+    # how much of the file this was made from; the pipeline redoes a
+    # transcript made from a file that was still arriving
+    f.write(f"source_bytes: {os.path.getsize(audio)}\n")
     f.write(f"generated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n")
     f.write("---\n\n")
     # Every paragraph ends with an Obsidian block id derived from its time

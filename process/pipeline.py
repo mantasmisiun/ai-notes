@@ -146,12 +146,47 @@ def needs_transcription(NOTES):
                for a in audio_files(NOTES))
 
 
+def expected_bytes(NOTES, audio):
+    """The recorder's byte count for this audio: a sidecar beside it, else the
+    figure in the live note's footer. None when neither has arrived yet."""
+    side = Path(str(audio) + ".size")
+    try:
+        if side.exists():
+            return int(side.read_text().strip())
+    except (OSError, ValueError):
+        pass
+    for live in layout.auto_dir(NOTES, "live").glob(f"{audio.stem}*.md"):
+        try:
+            m = re.search(r"\((\d+) bytes\)", live.read_text(encoding="utf-8")[-400:])
+            if m:
+                return int(m.group(1))
+        except OSError:
+            pass
+    return None
+
+
 def stage_transcribe(NOTES, env, free):
     for audio in audio_files(NOTES):
         stamp = audio.stem
         transcript = layout.auto_dir(NOTES, "transcripts") / f"{stamp}.md"
+        expected = expected_bytes(NOTES, audio)
+        size_now = audio.stat().st_size
         if transcript.exists():
-            continue
+            # A transcript made while the file was still arriving is short,
+            # and a truncated Opus stream decodes cleanly, so only the byte
+            # count can tell. Once the whole file is here, redo it and the
+            # note written from it.
+            head = transcript.read_text(encoding="utf-8")[:800]
+            got = re.search(r"^source_bytes:\s*(\d+)", head, re.M)
+            if expected and size_now == expected and got and int(got.group(1)) != expected:
+                log(f"transcript for {stamp} was made from {got.group(1)} of {expected} bytes; redoing it")
+                transcript.unlink()
+                marker = STATE / f"{stamp}.done"
+                if marker.exists():
+                    Path(marker.read_text().strip()).unlink(missing_ok=True)
+                    marker.unlink()
+            else:
+                continue
         # A recording whose transcription fails is tried twice, then set aside
         # with a marker. Retrying it every minute returned True each time and
         # nothing behind it in the queue, summaries included, ever ran.
@@ -163,7 +198,6 @@ def stage_transcribe(NOTES, env, free):
         # and a truncated Opus stream is a valid Opus stream that decodes
         # cleanly. So watch it stop changing instead.
         size_file = STATE / f"{stamp}.size"
-        size_now  = audio.stat().st_size
         if size_now == 0:
             stuck = STATE / f"{stamp}.stuck"
             if not stuck.exists():
@@ -171,11 +205,17 @@ def stage_transcribe(NOTES, env, free):
                 log(f"STUCK: {stamp} is 0 bytes here; sync has not delivered the audio")
             continue
         (STATE / f"{stamp}.stuck").unlink(missing_ok=True)
-        prev = size_file.read_text().strip() if size_file.exists() else ""
-        if str(size_now) != prev:
-            size_file.write_text(str(size_now))
-            log(f"waiting: {stamp} is still arriving ({size_now} bytes)")
-            continue
+        if expected is not None:
+            # the recorder said how big the file is: wait for exactly that
+            if size_now != expected:
+                log(f"waiting: {stamp} is still arriving ({size_now} of {expected} bytes)")
+                continue
+        else:
+            prev = size_file.read_text().strip() if size_file.exists() else ""
+            if str(size_now) != prev:
+                size_file.write_text(str(size_now))
+                log(f"waiting: {stamp} is still arriving ({size_now} bytes)")
+                continue
 
         log(f"transcribe: starting {stamp} ({free} MiB free)")
         r = subprocess.run([venv_py(), str(HERE / "transcribe.py"),
@@ -309,6 +349,7 @@ def stage_retention(NOTES):
             a = layout.auto_dir(NOTES, "audio") / f"{stamp}{ext}"
             if a.exists():
                 a.unlink()
+                Path(str(a) + ".size").unlink(missing_ok=True)
                 log(f"retention: deleted {a.name} after {age}d")
 
 

@@ -25,6 +25,7 @@ RATE       = 16000
 # factor, so a fast machine updates often and a slow one does not fall behind.
 WINDOW_SECS   = int(os.environ.get("LECTURE_WINDOW_SECS", "30"))
 INTERVAL_SECS = int(os.environ.get("LECTURE_CHUNK_SECS", "12"))
+SETTLE_LAG    = 15        # trailing context a word needs before it is final
 MODEL      = os.environ.get("LECTURE_MODEL", "small.en")
 # Three backends. cuda and cpu run faster-whisper (CTranslate2). vulkan runs
 # whisper.cpp built with GGML_VULKAN, the only route onto an AMD or Intel GPU
@@ -37,6 +38,10 @@ DEVICE     = "cuda" if BACKEND == "cuda" else "cpu"
 COMPUTE    = os.environ.get("LECTURE_COMPUTE",
                             "int8_float16" if DEVICE == "cuda" else "int8")
 THREADS    = int(os.environ.get("LECTURE_THREADS", "6"))
+# Greedy decoding for the live pass. A beam of five costs 1.5 to 2.5 times the
+# compute on a CPU for a small gain in accuracy; the accurate pass on the
+# processing machine keeps the beam, so the gain is not lost, only deferred.
+BEAM       = int(os.environ.get("LECTURE_BEAM", "1"))
 BITRATE    = os.environ.get("LECTURE_BITRATE", "24k")
 LANGUAGE   = os.environ.get("LECTURE_LANGUAGE", "en")
 WCPP       = Path(os.environ.get("LECTURE_WCPP")
@@ -94,9 +99,16 @@ class CT2Backend:
 
     def __init__(self):
         import cuda_libs; cuda_libs.enable()
+        import asr_prompt
         from faster_whisper import WhisperModel
         self.model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
                                   cpu_threads=THREADS)
+        self.hint = asr_prompt.initial_prompt(MODEL, LANGUAGE) or None
+        # Word alignment costs 20 to 30% of a pass. It is needed to settle
+        # text from a model that emits no punctuation; a model whose segments
+        # end at sentences settles on those, and alignment is dropped once
+        # the output has shown it punctuates.
+        self.align = True
 
     def units(self, buf_bytes):
         audio = np.frombuffer(buf_bytes, dtype=np.int16).astype(np.float32) / 32768.0
@@ -104,8 +116,8 @@ class CT2Backend:
             audio, language=LANGUAGE, vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
             condition_on_previous_text=False,
-            word_timestamps=True)
-        out = []
+            word_timestamps=self.align, beam_size=BEAM, hotwords=self.hint)
+        out, texts = [], []
         for seg in segments:
             # Whisper's own confidence statistics flag hallucinations, applied
             # by Whisper's own rule: a segment is silence being narrated only
@@ -121,11 +133,19 @@ class CT2Backend:
                     or (getattr(seg, "no_speech_prob", 0) > 0.6
                         and getattr(seg, "avg_logprob", 0) < -1.0)):
                 continue
+            texts.append(seg.text)
             words = seg.words or []
-            if words:
+            if self.align and words:
                 out += [(w.start, w.end, w.word.strip()) for w in words]
             else:
                 out.append((seg.start, seg.end, seg.text.strip()))
+        if self.align:
+            text = " ".join(texts)
+            n = len(text.split())
+            if n >= 40 and len(re.findall(r"[.!?]", text)) >= n / 30:
+                self.align = False
+                log("the model punctuates; settling by sentence from now on, "
+                    "without word alignment")
         return out
 
 
@@ -135,6 +155,7 @@ class WhisperCppBackend:
     faster-whisper. The model is loaded afresh each pass, which is what the
     benchmark timed, so the interval it chose already includes that cost."""
     name = "vulkan"
+    align = True
 
     def __init__(self, scratch):
         self.cli  = WCPP / "build" / "bin" / "whisper-cli"
@@ -220,9 +241,13 @@ class Live:
             os.fsync(f.fileno())
 
     def update(self, backend, buf_bytes, buf_start, now):
-        # Only the last interval is still in flux; everything before it has had
-        # the full window of context and will not improve.
-        cutoff_abs = now - INTERVAL_SECS
+        # Only the last SETTLE_LAG seconds are still in flux: a word needs a
+        # few seconds of what follows it before it stops changing, and fifteen
+        # is generous. This used to be one whole interval, which with a
+        # 75-second interval in a 90-second window settled fifteen seconds
+        # per pass and let the other sixty fall off the window unsettled: a
+        # replay kept 235 of 553 words.
+        cutoff_abs = now - min(INTERVAL_SECS, SETTLE_LAG)
 
         # Settle WORDS, not segments. Whisper breaks segments mostly at
         # punctuation, and a model that emits none, or a speaker who never
@@ -236,11 +261,13 @@ class Live:
             if not text or STUTTER.search(text):
                 continue
             start_abs, end_abs = buf_start + w_start, buf_start + w_end
-            # Skip by where the word STARTS, with tolerance. Re-alignment
+            # Skip by where the unit STARTS, with tolerance. Re-alignment
             # shifts a word's end by a fraction of a second between passes,
             # so a word settled just before the cutoff reappeared just after
-            # the settled mark on the next pass and was written twice.
-            if start_abs < self.settled_until - 0.15 or end_abs <= self.settled_until:
+            # the settled mark on the next pass and was written twice. A
+            # sentence-sized unit moves more between passes than a word.
+            tol = 0.15 if getattr(backend, "align", True) else 0.5
+            if start_abs < self.settled_until - tol or end_abs <= self.settled_until:
                 continue
             if end_abs <= cutoff_abs:
                 keep.append(text)
@@ -300,10 +327,24 @@ def finalise():
         # forward slashes: os.path.relpath returns backslashes on Windows and
         # Obsidian does not resolve those
         rel = os.path.relpath(ogg_path, vault).replace(os.sep, "/")
-        mb  = os.path.getsize(ogg_path) / 1e6
+        size = os.path.getsize(ogg_path)
+        mb  = size / 1e6
         os.remove(raw_path)
+        # The exact size travels with the file. A sync tool delivers a file in
+        # pieces and can pause mid-way for longer than the processing machine
+        # waits, and a truncated Opus stream decodes cleanly, so the desktop
+        # transcribed 1:38 of a 5:25 recording and had no way to know. With
+        # the expected size beside the audio, and in the note as a fallback,
+        # it waits for the whole file.
+        try:
+            tmp = ogg_path + ".size.tmp"
+            with open(tmp, "w") as f:
+                f.write(str(size))
+            os.replace(tmp, ogg_path + ".size")
+        except OSError:
+            pass
         append(f"\n\n---\n\n## Recording\n\n![[{rel}]]\n\n"
-               f"*Stopped {datetime.datetime.now():%H:%M}, {mb:.1f} MB.*\n")
+               f"*Stopped {datetime.datetime.now():%H:%M}, {mb:.1f} MB ({size} bytes).*\n")
     else:
         append(f"\n\n---\n*Stopped {datetime.datetime.now():%H:%M}. "
                f"Conversion failed, raw audio kept at `{raw_path}` "
@@ -323,7 +364,10 @@ def main():
         # -re makes a synthetic source play at real time. Without it lavfi
         # generates as fast as it can, so a "25 second" test consumes the whole
         # source in seconds and never exercises the stop path at all.
-        source = (["-re"] if src[0] == "lavfi" else []) + ["-f", src[0], "-i", src[1]]
+        # LECTURE_REPLAY_REALTIME makes a file replay at real time too, so a
+        # test can show whether a model keeps up rather than only what it hears
+        realtime = src[0] == "lavfi" or os.environ.get("LECTURE_REPLAY_REALTIME") == "1"
+        source = (["-re"] if realtime else []) + ["-f", src[0], "-i", src[1]]
     else:
         source = ps.default_input_device()
 
@@ -335,6 +379,7 @@ def main():
 
     win_bytes  = RATE * 2 * WINDOW_SECS
     step_bytes = RATE * 2 * INTERVAL_SECS
+    interval   = INTERVAL_SECS
 
     # Reading ffmpeg and transcribing must not share a thread. A pass blocks
     # for seconds, and on a machine near its limit passes run back to back, so
@@ -413,6 +458,7 @@ def main():
     since_pass = 0            # bytes accumulated since the last transcription
     total = 0                 # bytes of audio seen, for absolute timing
     ended = False
+    first_pass = True
 
     try:
         while not stop_requested() and not ended:
@@ -439,20 +485,34 @@ def main():
             # five-minute recording needed two more minutes to drain at stop.
             # Now a late pass costs a gap in the live text instead, and the
             # accurate transcript covers it afterwards.
-            if len(buf) > win_bytes:
-                buf = buf[-win_bytes:]
+            # The first pass is the exception: the audio that arrived while the
+            # model was loading is a backlog worth clearing, up to two windows
+            # of it, so the opening sentences still reach the live text.
+            cap = win_bytes * (2 if first_pass else 1)
+            if len(buf) > cap:
+                buf = buf[-cap:]
 
             if backend is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
-                late = since_pass / (RATE * 2) - INTERVAL_SECS
-                if late > 5:
+                late = since_pass / (RATE * 2) - interval
+                if late > 5 and not first_pass:
                     log(f"pass starting {late:.0f}s late; the live text may skip ahead")
+                first_pass = False
                 t0 = datetime.datetime.now()
                 live.update(backend, buf, now - len(buf) / (RATE * 2), now)
-                log(f"pass at {now:.0f}s of audio took "
-                    f"{(datetime.datetime.now() - t0).total_seconds():.1f}s; "
+                took = (datetime.datetime.now() - t0).total_seconds()
+                log(f"pass at {now:.0f}s of audio took {took:.1f}s; "
                     f"settled {len(live.settled.split())} words")
                 since_pass = 0
+                # Self-pacing. The benchmark measured an idle machine; a
+                # browser playing video or a hot laptop makes each pass
+                # slower, and a pass longer than its interval drifts late and
+                # gaps. Stretch the interval to fit, up to what the window
+                # allows, so updates come less often rather than with holes.
+                if took > 0.85 * interval and interval < WINDOW_SECS - SETTLE_LAG:
+                    interval = min(WINDOW_SECS - SETTLE_LAG, int(round(took / 0.8)))
+                    step_bytes = RATE * 2 * interval
+                    log(f"passes take {took:.0f}s; updating every {interval}s from now on")
 
         # Stop the microphone first, then take every byte ffmpeg emitted before
         # the last pass. Stop used to flush the window as of the previous
