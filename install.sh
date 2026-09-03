@@ -308,7 +308,11 @@ fi
 
 # ---- accurate model, derived from VRAM rather than asked -------------------
 if [ "$want_process" = 1 ]; then
-  if   [ -n "$LT_MODEL" ];       then asr_model="$LT_MODEL"; asr_compute=int8
+  # The Lithuanian model in float16 where the card allows it: int8 on an
+  # Ampere card is neither faster nor more precise, and the accurate pass is
+  # the one place precision is the point.
+  if   [ -n "$LT_MODEL" ] && [ "$VRAM_MIB" -ge 4000 ]; then asr_model="$LT_MODEL"; asr_compute=float16
+  elif [ -n "$LT_MODEL" ];       then asr_model="$LT_MODEL"; asr_compute=int8_float16
   elif [ "$VRAM_MIB" -ge 6000 ]; then asr_model=large-v3; asr_compute=float16
   elif [ "$VRAM_MIB" -ge 4000 ]; then asr_model=large-v3; asr_compute=int8_float16
   else                                asr_model=medium;   asr_compute=int8_float16
