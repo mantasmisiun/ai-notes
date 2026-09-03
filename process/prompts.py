@@ -147,7 +147,8 @@ Four to six sentences on what this was about and where it ended up.
 ## Key concepts
 Every distinct concept, term, name or claim that matters, each with a one-line
 explanation in the speaker's own terms. This is a complete list, not a
-selection.
+selection. No places, no dates, no everyday words with a dictionary
+definition; each entry once.
 
 {followups}Base it only on what is below. Do not invent examples or citations. Keep
 technical terms in their original form where translating them would lose
@@ -249,11 +250,13 @@ ištisai po tuo, ką parašysi, todėl jų nekartok ir netrumpink.
 Rašyk lietuvių kalba, markdown formatu, su šiais skyriais ir nieko daugiau:
 
 ## Santrauka
-Keturi–šeši sakiniai apie tai, kas buvo dėstoma ir prie ko prieita.
+Keturi–šeši sakiniai apie tai, apie ką buvo kalbama ir prie ko prieita.
 
 ## Pagrindinės sąvokos
 Kiekviena svarbi sąvoka, terminas, vardas ar teiginys su vienos eilutės
-paaiškinimu dėstytojo terminais. Tai pilnas sąrašas, ne atranka.
+paaiškinimu kalbėtojo žodžiais. Tai pilnas sąrašas, ne atranka. Ne vietovės,
+ne datos, ne kasdieniai žodžiai su žodyno apibrėžimu; kiekvienas įrašas tik
+vieną kartą.
 
 {followups}Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus,
 kurių vertimas prarastų prasmę, palik originalia forma. Rašyk gryną markdown.
