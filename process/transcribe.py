@@ -23,10 +23,30 @@ DEVICE  = os.environ.get("LECTURE_ASR_DEVICE", "cuda")
 LANGUAGE = os.environ.get("LECTURE_LANGUAGE", "en")
 
 model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
+# condition_on_previous_text is off: with it on, a repetition loop that starts
+# in a noisy passage feeds itself into the next segment and the next, and a
+# five-minute news broadcast came back with "suvelnių" forty times in a row.
+# The live worker already runs without it.
 segments, info = model.transcribe(
     audio, language=LANGUAGE, vad_filter=True,
     vad_parameters=dict(min_silence_duration_ms=500),
-    beam_size=5)
+    beam_size=5, condition_on_previous_text=False)
+
+# The same guards as the live worker: Whisper's own rule for narrated silence,
+# compression ratio for repetition, and a word-level check for a stretched
+# word, plus a back-to-back repeat collapsed to one.
+STUTTER = re.compile(r"(..+?)\1{2,}")
+
+
+def clean(text):
+    out = []
+    for w in text.split():
+        if STUTTER.search(w):
+            continue
+        if out and out[-1].lower() == w.lower():
+            continue
+        out.append(w)
+    return " ".join(out)
 
 
 def stamp(sec):
@@ -46,6 +66,13 @@ with open(tmp, "w", encoding="utf-8") as f:
     last = -999
     open_id = None
     for s in segments:
+        if (getattr(s, "compression_ratio", 0) > 2.4
+                or (getattr(s, "no_speech_prob", 0) > 0.6
+                    and getattr(s, "avg_logprob", 0) < -1.0)):
+            continue
+        text = clean(s.text.strip())
+        if not text:
+            continue
         if s.start - last > 45:            # a time marker roughly every 45s
             if open_id:
                 f.write(f"^{open_id}")
@@ -53,7 +80,7 @@ with open(tmp, "w", encoding="utf-8") as f:
             open_id = "t" + label.replace(":", "-")
             f.write(f"\n\n**[{label}]** ")
             last = s.start
-        f.write(s.text.strip() + " ")
+        f.write(text + " ")
         f.flush()
     if open_id:
         f.write(f"^{open_id}")
