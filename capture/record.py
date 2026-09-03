@@ -145,8 +145,8 @@ def main():
             schedule=(f'[[{Path(entry["path"]).stem}]]' if entry else ""),
             area="", subject="",
             kind=kind,
-            transcript_link=note_link,
-            audio_link=audio_link), encoding="utf-8")
+            live_link=note_link,
+            transcript_link=layout.link(tr, "transcripts", stamp)), encoding="utf-8")
 
     env = dict(os.environ,
                LECTURE_STOP_FILE=str(STOP),

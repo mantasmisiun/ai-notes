@@ -515,12 +515,7 @@ if area and subject:
 try:
     if os.path.exists(raw_path):
         rel_out = os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/")
-        text = open(raw_path, encoding="utf-8").read()
-        if rel_out not in text:
-            marker = "\n---\n"
-            i = text.index(marker)
-            text = text[:i] + f"\nSummary: [[{rel_out}]]\n" + text[i:]
-            open(raw_path, "w", encoding="utf-8").write(text)
+        rawnote.set_link(raw_path, "Summary", rel_out)
 except Exception:
     pass          # a missing backlink must not fail a completed summary
 
