@@ -12,6 +12,20 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 
 function Say($m) { Write-Host $m }
+
+# Clear between steps so each question starts on an empty screen, with a
+# reminder of what has been decided. Long output, the benchmark especially,
+# survives until the next question rather than being wiped by it.
+$script:Decided = @()
+function Decided($m) { $script:Decided += $m }
+function Screen {
+    Clear-Host
+    Write-Host "ai-notes installer"
+    if ($script:Decided.Count -gt 0) {
+        Write-Host ($script:Decided -join "  -  ")
+    }
+    Write-Host ""
+}
 function Step($m) { Write-Host ""; Write-Host "--- $m" -ForegroundColor Cyan }
 function Ask($prompt, $default) {
     $r = Read-Host "$prompt [$default]"
@@ -19,9 +33,7 @@ function Ask($prompt, $default) {
     return $r
 }
 
-Clear-Host
-Say "ai-notes installer"
-Say ""
+Screen
 
 # ---- prerequisites ---------------------------------------------------------
 Step "Checking prerequisites"
@@ -98,6 +110,7 @@ if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
 }
 
 # ---- language --------------------------------------------------------------
+Screen
 Step "Lecture language"
 Say "  1) English"
 Say "  2) Lithuanian"
@@ -111,6 +124,8 @@ if ((Ask "Select" "1") -eq "2") {
 }
 
 # ---- vault -----------------------------------------------------------------
+if ($lang -eq "lt") { Decided "Lithuanian" } else { Decided "English" }
+Screen
 Step "Where is your Obsidian vault"
 Say "  The folder containing .obsidian. Everything else is created inside it."
 Say "  On a borrowed machine, point this somewhere scratch."
@@ -125,6 +140,8 @@ $vaultFwd = $vault -replace '\\', '/'
 $scratch = "$env:LOCALAPPDATA\lecture-pipeline" -replace '\\', '/'
 
 # ---- environment -----------------------------------------------------------
+Decided (Split-Path -Leaf $vault)
+Screen
 Step "Building the capture environment"
 if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
     python -m venv "$Root\capture\venv"
@@ -153,15 +170,21 @@ $env:GPU_DISCRETE = "$discrete"
 $env:VRAM_MIB = "$vram"
 $env:MIN_LIVE_FACTOR = "1.2"
 
-$bench = & "$Root\capture\venv\Scripts\python.exe" "$Root\lib\benchmark.py" `
-             $lang "$Root\samples" "$Root\.bench" 2>&1
-$bench | ForEach-Object { Write-Host $_ }
-$result = ($bench | Select-String -Pattern "^RESULT ").ToString()
+# Stream rather than capture. Collecting the output first means nothing
+# appears until the whole benchmark finishes, which on a slow machine with
+# models to download is many minutes of a blank screen.
+$bench = @()
+& "$Root\capture\venv\Scripts\python.exe" "$Root\lib\benchmark.py" `
+      $lang "$Root\samples" "$Root\.bench" 2>&1 |
+    ForEach-Object { Write-Host $_; $bench += "$_" }
+$resultLine = $bench | Where-Object { $_ -like "RESULT *" } | Select-Object -Last 1
+$result = if ($resultLine) { "$resultLine" } else { "" }
 
-$liveModel = ""
+$liveModel = ""; $chunkSecs = 12
 if ($result) {
     $rp = $result -split " "
     if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2] }
+    if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
 }
 
 if (-not $liveModel) {
@@ -200,6 +223,7 @@ LECTURE_LANGUAGE="$lang"
 LECTURE_NOTE_LANGUAGE="$lang"
 
 LECTURE_MODEL="$liveModel"
+LECTURE_CHUNK_SECS="$chunkSecs"
 LECTURE_ASR_MODEL="large-v3"
 LECTURE_ASR_COMPUTE="float16"
 LECTURE_LLM="qwen3:8b"

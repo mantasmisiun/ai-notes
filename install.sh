@@ -41,6 +41,7 @@ LECTURE_LANGUAGE="$lang"
 LECTURE_NOTE_LANGUAGE="$note_lang"
 
 LECTURE_MODEL="${live:-}"
+LECTURE_CHUNK_SECS="${chunk_secs:-12}"
 LECTURE_ASR_MODEL="${asr_model:-}"
 LECTURE_ASR_COMPUTE="${asr_compute:-}"
 LECTURE_LLM="${llm:-}"
@@ -191,7 +192,7 @@ if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
 fi
 
 # first pass: the component installers need the paths before they can run
-backend="${LECTURE_BACKEND:-cpu}"; live=""; asr_model=""; asr_compute=""; llm="$d_llm"
+backend="${LECTURE_BACKEND:-cpu}"; live=""; chunk_secs=""; asr_model=""; asr_compute=""; llm="$d_llm"
 write_config
 mkdir -p "$vault/$tr_dir"/{live,transcripts,audio,unfiled} "$scratch"
 "$ROOT/lib/example-module.sh" "$vault/$uni_dir"
@@ -232,6 +233,7 @@ elif [ "$want_capture" = 1 ]; then
   result="$(printf '%s\n' "$out" | sed -n 's/^RESULT //p')"
   backend="$(printf '%s' "$result" | cut -d' ' -f1)"
   live="$(printf '%s' "$result"    | cut -d' ' -f2)"
+  chunk_secs="$(printf '%s' "$result" | cut -d' ' -f4)"
   say
 
   if [ "$backend" = "none" ]; then

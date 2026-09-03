@@ -96,13 +96,18 @@ print(json.dumps({"elapsed": time.perf_counter() - t0, "words": words}))
 """
 
 
+_fetched = set()          # a model is the same file whichever backend runs it
+
+
 def time_faster_whisper(model, device):
     """Run in a child process: loading two 1.5 GB models in one process is
     enough to trigger the OOM killer on a 16 GB laptop."""
-    with Spinner(f"downloading {label(model)}"):
-        subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "fetch"],
-                       capture_output=True, text=True, check=True,
-                       env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
+    if model not in _fetched:
+        with Spinner(f"downloading {label(model)}"):
+            subprocess.run([sys.executable, "-c", CHILD, model, "cpu", wav, lang, "fetch"],
+                           capture_output=True, text=True, check=True,
+                           env=dict(os.environ, VRAM_MIB=str(VRAM_MIB)))
+        _fetched.add(model)
     with Spinner(f"benchmarking {label(model)} on {device}"):
         r = subprocess.run([sys.executable, "-c", CHILD, model, device, wav, lang, "run"],
                            capture_output=True, text=True,
@@ -189,7 +194,8 @@ for model in ladder:
         try:
             el, words = fn()
         except Exception as e:
-            print(f"  {label(model):<28} {backend:<8} unavailable ({type(e).__name__})")
+            why = str(e).strip().splitlines()[-1] if str(e).strip() else type(e).__name__
+            print(f"  {label(model):<28} {backend:<8} unavailable: {why[:90]}")
             continue
         if el is None:
             print(f"  {label(model):<28} {backend:<8} failed")
@@ -247,6 +253,17 @@ else:
     why = ("the model for this language" if FIXED
                else "largest model that keeps up")
 
+# How often the live caption can update.
+#
+# Whisper's encoder always processes exactly 30 seconds: a shorter buffer is
+# padded, so it costs the same as a full one. Window size is therefore free up
+# to 30s and only the update interval costs anything. Each update is one window,
+# about 30/F seconds of compute, so updates must be spaced further apart than
+# that. Doubling it leaves headroom for a lecture hall and a throttling laptop.
+interval = max(5, int(round(2 * 30.0 / best[2])))
+window = 30
+
 print(f"Selected: {label(best[0])} on {best[1]}, {best[2]:.1f}x real time.")
+print(f"Live caption: {window}s window, updating every {interval}s.")
 print(why + " on this machine.")
-print(f"RESULT {best[1]} {best[0]} {best[2]:.2f}")
+print(f"RESULT {best[1]} {best[0]} {best[2]:.2f} {interval} {window}")
