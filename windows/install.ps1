@@ -8,6 +8,15 @@
 #   .\windows\install.ps1
 
 $ErrorActionPreference = "Stop"
+# Any error stops the script. Without this the window closed before the
+# message could be read, and the only report possible was "it crashed".
+trap {
+    Write-Host ""
+    Write-Host "The installer stopped: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host $_.InvocationInfo.PositionMessage
+    Read-Host "Press Enter to close"
+    exit 1
+}
 $env:PIP_DISABLE_PIP_VERSION_CHECK = "1"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
@@ -60,8 +69,19 @@ Step "Checking prerequisites"
 
 function Have($cmd) { return [bool](Get-Command $cmd -ErrorAction SilentlyContinue) }
 
+# Get-Command finds the Microsoft Store alias stub that every fresh Windows
+# profile carries in WindowsApps. It prints "Python was not found" and opens
+# the Store instead of running, so only a python that answers --version counts.
+# A second user account, on a laptop where the first had installed Python for
+# itself, was told "all present" and fell over creating the venv.
+function HavePython {
+    if (-not (Have python)) { return $false }
+    $r = Native "python" @("--version")
+    return ($r.Code -eq 0 -and (($r.Lines -join " ") -match "Python 3"))
+}
+
 $missing = @()
-if (-not (Have python)) { $missing += "Python.Python.3.12" }
+if (-not (HavePython)) { $missing += "Python.Python.3.12" }
 if (-not (Have ffmpeg)) { $missing += "Gyan.FFmpeg" }
 
 # CTranslate2's wheels are built with MSVC and fail with a misleading
@@ -86,7 +106,7 @@ if ($missing.Count -gt 0) {
                 ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
     Say ""
     $stillMissing = @()
-    if (-not (Have python)) { $stillMissing += "python" }
+    if (-not (HavePython)) { $stillMissing += "python" }
     if (-not (Have ffmpeg)) { $stillMissing += "ffmpeg" }
     if ($stillMissing.Count -gt 0) {
         Say "Installed, but $($stillMissing -join ' and ') is still not visible."
@@ -166,7 +186,13 @@ Decided (Split-Path -Leaf $vault)
 Screen
 Step "Building the capture environment"
 if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
-    python -m venv "$Root\capture\venv"
+    $r = Native "python" @("-m", "venv", "$Root\capture\venv")
+    if ($r.Code -ne 0 -or -not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
+        Say ""
+        Say "Python could not create the environment (exit code $($r.Code))."
+        Say "Check that python --version works in a new PowerShell window."
+        Read-Host "Press Enter to close"; exit 1
+    }
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
 & "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
@@ -250,7 +276,13 @@ if (-not $liveModel) {
 if ($wantProcess -eq 1) {
     Step "Building the processing environment"
     if (-not (Test-Path "$Root\process\venv\Scripts\python.exe")) {
-        python -m venv "$Root\process\venv"
+        $r = Native "python" @("-m", "venv", "$Root\process\venv")
+        if ($r.Code -ne 0 -or -not (Test-Path "$Root\process\venv\Scripts\python.exe")) {
+            Say ""
+            Say "Python could not create the environment (exit code $($r.Code))."
+            Say "Check that python --version works in a new PowerShell window."
+            Read-Host "Press Enter to close"; exit 1
+        }
     }
     & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
     Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
