@@ -25,7 +25,13 @@ RATE       = 16000
 WINDOW_SECS   = int(os.environ.get("LECTURE_WINDOW_SECS", "30"))
 INTERVAL_SECS = int(os.environ.get("LECTURE_CHUNK_SECS", "12"))
 MODEL      = os.environ.get("LECTURE_MODEL", "small.en")
-COMPUTE    = os.environ.get("LECTURE_COMPUTE", "int8")
+# The benchmark chose a backend and the installer recorded it; the worker has to
+# actually use it. device was hardcoded to cpu, so a machine measured at 12x on
+# CUDA ran its live pass on the CPU at 1.5x and fell hopelessly behind.
+BACKEND    = os.environ.get("LECTURE_BACKEND", "cpu").lower()
+DEVICE     = "cuda" if BACKEND == "cuda" else "cpu"
+COMPUTE    = os.environ.get("LECTURE_COMPUTE",
+                            "int8_float16" if DEVICE == "cuda" else "int8")
 THREADS    = int(os.environ.get("LECTURE_THREADS", "6"))
 BITRATE    = os.environ.get("LECTURE_BITRATE", "24k")
 LANGUAGE   = os.environ.get("LECTURE_LANGUAGE", "en")
@@ -150,9 +156,9 @@ def main():
                "The transcript and notes are produced afterwards.*\n\n")
         model = None
     else:
-        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}`, "
+        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}` on {DEVICE}, "
                f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
-        model = WhisperModel(MODEL, device="cpu", compute_type=COMPUTE,
+        model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
                              cpu_threads=THREADS)
         append("*ready, recording*\n\n")
 
