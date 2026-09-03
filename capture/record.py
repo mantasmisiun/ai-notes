@@ -120,7 +120,6 @@ def main():
     tr = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
     note_link    = layout.link(tr, "live", note.stem)
     mynotes_link = layout.link(tr, layout.RAW, mynotes.stem)
-    audio_link   = layout.link(tr, "audio", f"{stamp}.ogg")
 
     front = [f'stamp: "{stamp}"', f"date: {datetime.now():%Y-%m-%d}",
              f"time: {datetime.now():%H:%M}", "type: lecture-live"]
