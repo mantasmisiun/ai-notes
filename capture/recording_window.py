@@ -58,7 +58,10 @@ class RecordingWindow(QWidget):
         self.light = QLabel()
         self.light.setPixmap(self.on)
         top.addWidget(self.light)
-        self.title = QLabel(f"<b>Recording</b> {label}")
+        self.label = label
+        # State lives in the title, in the default text colour. A dimmed hint
+        # label was invisible under a dark theme and has been removed.
+        self.title = QLabel("<b>Starting microphone</b>")
         top.addWidget(self.title)
         top.addStretch()
         lay.addLayout(top)
@@ -67,11 +70,6 @@ class RecordingWindow(QWidget):
         self.clock.setStyleSheet("font-size: 22pt;")
         lay.addWidget(self.clock)
 
-        # Capture starts at once; the model takes a few seconds longer. Say
-        # so, or the first sentence looks lost when it is only not yet shown.
-        self.hint = QLabel("Starting the microphone.")
-        self.hint.setStyleSheet("color: palette(mid);")
-        lay.addWidget(self.hint)
 
         self.bar = QProgressBar()
         self.bar.setRange(0, 0)                  # indeterminate
@@ -92,12 +90,9 @@ class RecordingWindow(QWidget):
         if not self.capturing and self.capturing_path and self.capturing_path.exists():
             self.capturing = True
             self.started = time.time()
-            self.hint.setText("Recording. Transcription is starting up,\n"
-                              "the first words appear in a few seconds.")
+            self.title.setText(f"<b>Recording</b> {self.label}")
         if not self.ready and self.ready_path and self.ready_path.exists():
             self.ready = True
-            self.hint.setText("Write in your raw note, not in the transcript.\n"
-                              "The transcript is rewritten as it goes.")
         if self.finishing:
             # record.py deletes the stop file once the worker has flushed the
             # last window and converted the audio. Its disappearance is the
@@ -129,8 +124,6 @@ class RecordingWindow(QWidget):
         self.finishing = True
         self.light.setPixmap(self.off)
         self.title.setText("<b>Finishing</b>")
-        self.hint.setText("Transcribing the last few seconds and saving the\n"
-                          "audio. This window closes by itself when done.")
         self.stop_btn.setEnabled(False)
         self.stop_btn.setText("Stopping")
         self.bar.show()
