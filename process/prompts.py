@@ -13,8 +13,6 @@ LANG_NAMES_LT = {"en": "anglų", "lt": "lietuvių"}
 PROMPTS = {
     "en": {
         "section": """You are given part of a transcript of {context}, in {src}.
-It came from speech recognition, so expect disfluencies and occasional wrong
-words.
 
 Write **detailed notes** on this part, not a summary. Someone who missed the
 session should be able to follow the substance from your notes alone.
@@ -25,9 +23,13 @@ important or examinable. Keep the order things were said in.
 
 Drop only: filler, repetition, digressions, and administrative chatter.
 
-Do not compress for brevity. Length should follow the material. If a passage is
-too garbled to interpret, ignore it rather than guessing. Do not add an
+Do not compress for brevity. Length should follow the material. Do not add an
 introduction or a conclusion, and do not invent structure that is not there.
+
+The text is machine-transcribed, so some words are wrong and there may be no
+punctuation. Read through that and write about the subject matter. **Never
+comment on the transcription, list misrecognised words, or discuss the quality
+of the text.** If a passage is beyond understanding, skip it silently.
 
 TRANSCRIPT PART:
 {chunk}""",
@@ -88,8 +90,6 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
 
     "lt": {
         "section": """Pateikta {context} transkripcijos dalis {src_lt} kalba.
-Ji gauta iš kalbos atpažinimo sistemos, todėl pasitaiko nesklandumų ir
-klaidingai atpažintų žodžių.
 
 Parašyk **išsamias pastabas** apie šią dalį, o ne santrauką. Žmogus, kuris
 nedalyvavo, turėtų iš tavo pastabų suprasti esmę.
@@ -101,8 +101,13 @@ formules, išspręstus pavyzdžius su žingsniais, argumentus ir viską, kas
 Išmesk tik: tuščiažodžiavimą, pasikartojimus, nukrypimus ir organizacinius
 dalykus.
 
-Netrumpink dėl trumpumo. Ilgis turi atitikti medžiagą. Jei kuri nors vieta per
-daug iškraipyta, praleisk ją, o ne spėk. Nerašyk įžangos ar išvadų.
+Netrumpink dėl trumpumo. Ilgis turi atitikti medžiagą. Nerašyk įžangos ar
+išvadų.
+
+Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
+skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada
+nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir
+nekomentuok teksto kokybės.** Nesuprantamas vietas tiesiog praleisk.
 
 TRANSKRIPCIJOS DALIS:
 {chunk}""",
