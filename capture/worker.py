@@ -91,21 +91,34 @@ class Live:
             vad_parameters=dict(min_silence_duration_ms=500),
             condition_on_previous_text=False)
 
-        # Only the last interval is still in flux; everything before it has had
-        # the full window of context and will not improve.
-        cutoff = max(0.0, (now - buf_start) - INTERVAL_SECS)
-        keep, tail = [], []
+        # Only the last interval is still in flux; everything that ends before
+        # it has had the full window of context and will not improve.
+        cutoff_abs = now - INTERVAL_SECS
+
+        # Both decisions are made on where a segment ENDS. Settling by end but
+        # skipping by start meant a segment that straddled the cutoff was shown
+        # provisionally, then skipped next pass as "already settled" when it
+        # never had been. Sentences spanning a boundary vanished, which with a
+        # short interval was a large share of natural speech.
+        keep, tail, settled_to = [], [], self.settled_until
         for seg in segments:
             text = seg.text.strip()
             if not text:
                 continue
-            if buf_start + seg.start < self.settled_until:
-                continue                      # already settled from a prior pass
-            (keep if seg.end <= cutoff else tail).append(text)
+            start_abs, end_abs = buf_start + seg.start, buf_start + seg.end
+            if end_abs <= self.settled_until:
+                continue                      # wholly covered by settled text
+            if end_abs <= cutoff_abs:
+                keep.append(text)
+                settled_to = max(settled_to, end_abs)
+            else:
+                tail.append(text)
 
         if keep:
             self.settled = (self.settled + " " + " ".join(keep)).strip() + " "
-            self.settled_until = buf_start + cutoff
+            # advance only as far as text was actually emitted, never to the
+            # cutoff itself, so nothing can be claimed settled without appearing
+            self.settled_until = settled_to
         self.write(" ".join(tail))
 
 
@@ -236,8 +249,12 @@ def main():
             if data is None:
                 ended = True
                 live.write("\n\n*Audio source ended unexpectedly.*")
-            if len(buf) > win_bytes:
-                buf = buf[-win_bytes:]
+            # Keep at least the window, and never less than the audio no pass has
+            # transcribed yet plus ten seconds of context. Trimming to a fixed
+            # 30 s meant a late pass silently lost whatever had aged past it.
+            keep_bytes = max(win_bytes, since_pass + RATE * 2 * 10)
+            if len(buf) > keep_bytes:
+                buf = buf[-keep_bytes:]
 
             if model is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
