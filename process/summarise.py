@@ -225,6 +225,29 @@ def with_time_lines(notes, start):
     return "\n".join(out)
 
 
+# Proper nouns and bold terms, in order of first appearance. Sentence-initial
+# capitals are ignored unless the word recurs capitalised mid-sentence, so
+# "The" and "Members" do not become names.
+NAME_RUN = re.compile(r"\b([A-ZÀ-Ž][\w'-]+(?:\s+(?:(?:de|del|la|le|von|van|of|the|da|di)\s+)?[A-ZÀ-Ž][\w'-]+)+)")
+MID_CAP  = re.compile(r"(?<=[a-zà-ž,;:]\s)([A-ZÀ-Ž][\w'-]{2,})")
+BOLD     = re.compile(r"\*\*([^*\n]{2,60})\*\*")
+
+
+def extract_names(text, seen=None):
+    seen = seen if seen is not None else []
+    counts = {}
+    for m in MID_CAP.finditer(text):
+        counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    cands = [b.strip() for b in BOLD.findall(text)]
+    cands += [m.group(1) for m in NAME_RUN.finditer(text)]
+    cands += [w for w, n in counts.items() if n >= 2]
+    for c in cands:
+        c = re.sub(r"\s+", " ", c).strip(" .,:;")
+        if c and c not in seen and len(seen) < 60:
+            seen.append(c)
+    return seen
+
+
 def split_off(note, heading):
     """Remove one ## section from the model's output and return (rest, section),
     so Open questions can sit after the detail rather than before it."""
@@ -350,6 +373,13 @@ print(f"{n_words} words in {len(parts)} chunk(s)", flush=True)
 # note is now the section notes themselves, so a name the student corrected
 # has to be corrected where the detail is written.
 notes_intro = P["notes_intro"].format(notes=own) if own else ""
+role_line = prompts.roles(kind, NOTELANG)
+
+# Names travel forward. Each chunk sees only its own text and the transcript
+# changed a name's spelling halfway through a recording, so blocks up to one
+# point said Nasson and after it Nasona. The student's notes rank first: a name
+# typed by someone who was there beats the speech recogniser.
+names = extract_names(own) if own else []
 
 summaries = []
 t_start = time.time()
@@ -359,7 +389,10 @@ for i, (start, end, c) in enumerate(parts, 1):
     # the last hundred words of the previous chunk, for continuity across the
     # cut without writing the same point twice
     prior = P["prior"].format(prior=" ".join(prev_text.split()[-120:])) if prev_text else ""
-    summaries.append(ask(notes_intro + P["section"].format(chunk=c, prior=prior)))
+    names_block = P["names"].format(names="; ".join(names)) if names else ""
+    summaries.append(ask(notes_intro + P["section"].format(
+        chunk=c, prior=prior, names=names_block, roles=role_line)))
+    extract_names(summaries[-1], names)
     prev_text = c
     el = time.time() - t0
     done = time.time() - t_start
@@ -372,8 +405,17 @@ for i, (start, end, c) in enumerate(parts, 1):
 # transcript paragraph it came from. A second pass through the model used to
 # rewrite the body and, with an 8B model, halved it every time.
 print("  combining", flush=True)
-top = unfence(ask(notes_intro + P["combine"].format(sections="\n\n---\n\n".join(summaries))))
+ask_followups = prompts.wants_followups(" ".join(b for _, b in paras) + " " + own, NOTELANG)
+followups = P["followups"] if ask_followups else ""
+top = unfence(ask(notes_intro + P["combine"].format(
+    sections="\n\n---\n\n".join(summaries), followups=followups)))
+# whatever the model calls it, the section is kept only when it was asked for
 top, open_q = split_off(top, H["open"])
+top, legacy = split_off(top, H["legacy_open"])
+if not ask_followups:
+    open_q = ""
+elif not open_q:
+    open_q = legacy
 
 # Topic blocks carry their own titles, so no per-chunk heading: the reader sees
 # one continuous run of topics, each with the time it starts linked into the

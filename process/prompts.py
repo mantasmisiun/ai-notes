@@ -14,9 +14,51 @@ LANG_NAMES_LT = {"en": "anglų", "lt": "lietuvių"}
 # writes the top of the note; the body is assembled from the section notes
 # without another pass through the model, so nothing is lost to a rewrite.
 HEADINGS = {
-    "en": {"detail": "Detail", "open": "Open questions"},
-    "lt": {"detail": "Turinys", "open": "Atviri klausimai"},
+    "en": {"detail": "Detail", "open": "Follow-ups", "legacy_open": "Open questions"},
+    "lt": {"detail": "Turinys", "open": "Tolesni darbai", "legacy_open": "Atviri klausimai"},
 }
+
+# A Follow-ups section is asked for only when the material contains something
+# that looks like one. Three models in a row, told to omit the section when
+# there was nothing, invented questions rather than leave it out.
+FOLLOWUP_TRIGGERS = {
+    "en": ("homework", "assignment", "reading list", "read chapter", "read the chapter",
+           "textbook", "for next week", "next lecture", "next seminar", "look it up",
+           "look up", "hand in", "due date", "due on", "due by", "prepare for",
+           "before next", "exam"),
+    "lt": ("namų darb", "užduot", "perskaityk", "perskaityt", "skaityk", "vadovėl",
+           "kitai paskait", "kitą paskait", "kitai savait", "kitą savait", "atsiskait",
+           "pasiruošk", "pasiruošt", "egzamin", "iki kito"),
+}
+
+LECTURE_KINDS = ("lecture", "seminar", "lab", "tutorial", "workshop", "class", "lesson",
+                 "paskait", "seminar", "pratyb", "laborator", "pamok", "užsiėm")
+
+
+def roles(kind, lang="en"):
+    """Who is called what. One name per role throughout, so 'a participant'
+    cannot stand for the presenter in one block and a bystander in the next."""
+    lecture = any(w in (kind or "").lower() for w in LECTURE_KINDS)
+    if lang == "lt":
+        if lecture:
+            return ("Dėstytoją vadink „dėstytoju“, klausiančius studentus „studentu“. "
+                    "Tas pats žmogus visame konspekte vadinamas tuo pačiu vardu.")
+        return ("Įrašą darantį žmogų vadink „vedėju“, visus kitus pagal vaidmenį, kuris "
+                "nesikeičia: „pašnekovas“, „narys“, „buvęs narys“. Niekada „dalyvis“ "
+                "dviem skirtingiems žmonėms.")
+    if lecture:
+        return ("Call the lecturer \"the lecturer\" and anyone asking a question \"a "
+                "student\". The same person is called the same thing throughout.")
+    return ("Call the person who made the recording \"the presenter\" and everyone "
+            "else by a role that stays the same throughout: \"an interviewee\", \"a "
+            "member\", \"a former member\". Never \"a participant\" for two different "
+            "people.")
+
+
+def wants_followups(text, lang="en"):
+    t = (text or "").lower()
+    trig = FOLLOWUP_TRIGGERS.get(lang, ()) + FOLLOWUP_TRIGGERS["en"]
+    return any(w in t for w in trig)
 
 PROMPTS = {
     "en": {
@@ -50,7 +92,9 @@ Rules for the blocks:
 - Keep numbers, dates, names, definitions in the words used, formulas, worked
   steps, and anything flagged as important or examinable. Put a key term in
   **bold** the first time it appears.
-- Use one spelling per name, the most frequent one in the transcript.
+- {roles}
+- Use one spelling per name: the spelling in the list of names below if it is
+  there, otherwise the most frequent one in the transcript.
 - Skip filler, repetition, advertising and administrative chatter. A passage
   that says nothing new gets no block.
 
@@ -63,11 +107,23 @@ punctuation. Read through that and write about the subject matter. **Never
 comment on the transcription, list misrecognised words, or discuss the quality
 of the text.** If a passage is beyond understanding, skip it silently.
 
-{prior}TRANSCRIPT PART:
+{names}{prior}TRANSCRIPT PART:
 {chunk}""",
 
         "prior": """PRECEDING CONTEXT, already covered, write nothing about it:
 {prior}
+
+""",
+
+        "names": """NAMES ALREADY IN USE, keep these spellings exactly:
+{names}
+
+""",
+
+        "followups": """## Follow-ups
+Only things someone in the recording explicitly told the listener to read,
+look up, prepare or hand in, each quoted or closely paraphrased. Nothing else
+belongs here.
 
 """,
 
@@ -85,12 +141,7 @@ Every distinct concept, term, name or claim that matters, each with a one-line
 explanation in the speaker's own terms. This is a complete list, not a
 selection.
 
-## Open questions
-Only questions that someone in the recording actually raised and left
-unanswered, or reading they said to do. Omit this section entirely if there
-were none. Do not invent questions.
-
-Base it only on what is below. Do not invent examples or citations. Keep
+{followups}Base it only on what is below. Do not invent examples or citations. Keep
 technical terms in their original form where translating them would lose
 meaning. Output raw markdown. Do not wrap your answer in a code fence.
 
@@ -147,7 +198,9 @@ Blokų taisyklės:
 - Palik skaičius, datas, vardus, apibrėžimus tokius, kokie pasakyti, formules,
   sprendimo žingsnius ir viską, kas įvardyta kaip svarbu ar egzaminui. Esminį
   terminą pirmą kartą **paryškink**.
-- Kiekvienam vardui viena rašyba, dažniausia transkripcijoje.
+- {roles}
+- Kiekvienam vardui viena rašyba: ta, kuri yra žemiau pateiktame vardų sąraše,
+  o jei jos ten nėra, dažniausia transkripcijoje.
 - Praleisk tuščiažodžiavimą, pasikartojimus, reklamą ir organizacinius
   dalykus. Ištrauka, kuri nepasako nieko naujo, bloko negauna.
 
@@ -159,11 +212,23 @@ skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekad
 nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir
 nekomentuok teksto kokybės.** Nesuprantamas vietas tiesiog praleisk.
 
-{prior}TRANSKRIPCIJOS DALIS:
+{names}{prior}TRANSKRIPCIJOS DALIS:
 {chunk}""",
 
         "prior": """ANKSTESNIS KONTEKSTAS, jau aprašytas, apie jį nerašyk:
 {prior}
+
+""",
+
+        "names": """JAU NAUDOJAMI VARDAI, išlaikyk tiksliai šias rašybas:
+{names}
+
+""",
+
+        "followups": """## Tolesni darbai
+Tik tai, ką kas nors įraše aiškiai liepė perskaityti, susirasti, pasiruošti ar
+atsiskaityti, kiekvienas punktas pacituotas arba artimai perpasakotas. Niekas
+kita čia nepriklauso.
 
 """,
 
@@ -180,12 +245,7 @@ Keturi–šeši sakiniai apie tai, kas buvo dėstoma ir prie ko prieita.
 Kiekviena svarbi sąvoka, terminas, vardas ar teiginys su vienos eilutės
 paaiškinimu dėstytojo terminais. Tai pilnas sąrašas, ne atranka.
 
-## Atviri klausimai
-Tik klausimai, kuriuos kas nors įraše iš tikrųjų iškėlė ir paliko neatsakytus,
-arba literatūra, kurią liepė perskaityti. Jei tokių nebuvo, šio skyriaus visai
-nerašyk. Nekurk klausimų pats.
-
-Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus,
+{followups}Remkis tik tuo, kas pateikta žemiau. Nekurk pavyzdžių ar šaltinių. Terminus,
 kurių vertimas prarastų prasmę, palik originalia forma. Rašyk gryną markdown.
 Neįtrauk atsakymo į kodo bloką.
 
