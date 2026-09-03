@@ -35,9 +35,11 @@ def dot(colour, size=18):
 
 
 class RecordingWindow(QWidget):
-    def __init__(self, label, stop_path):
+    def __init__(self, label, stop_path, ready_path=None):
         super().__init__()
         self.stop_path = Path(stop_path)
+        self.ready_path = Path(ready_path) if ready_path else None
+        self.ready = self.ready_path is None
         self.started = time.time()
         self.lit = True
         self.on, self.off = dot("#e01b24"), dot("#5c1b1f")
@@ -60,8 +62,10 @@ class RecordingWindow(QWidget):
         self.clock.setStyleSheet("font-size: 22pt;")
         lay.addWidget(self.clock)
 
-        self.hint = QLabel("Write in your raw note, not in the transcript.\n"
-                           "The transcript is rewritten as it goes.")
+        # Capture starts at once; the model takes a few seconds longer. Say
+        # so, or the first sentence looks lost when it is only not yet shown.
+        self.hint = QLabel("Recording. Transcription is starting up,\n"
+                           "the first words appear in a few seconds.")
         self.hint.setStyleSheet("color: palette(mid);")
         lay.addWidget(self.hint)
 
@@ -81,6 +85,10 @@ class RecordingWindow(QWidget):
         self.timer = t
 
     def tick(self):
+        if not self.ready and self.ready_path and self.ready_path.exists():
+            self.ready = True
+            self.hint.setText("Write in your raw note, not in the transcript.\n"
+                              "The transcript is rewritten as it goes.")
         if self.finishing:
             # record.py deletes the stop file once the worker has flushed the
             # last window and converted the audio. Its disappearance is the
@@ -126,8 +134,9 @@ class RecordingWindow(QWidget):
 def main():
     label = sys.argv[1] if len(sys.argv) > 1 else ""
     stop_path = sys.argv[2] if len(sys.argv) > 2 else str(ps.state_dir() / "stop")
+    ready_path = sys.argv[3] if len(sys.argv) > 3 else None
     app = QApplication(sys.argv)
-    w = RecordingWindow(label, stop_path)
+    w = RecordingWindow(label, stop_path, ready_path)
     w.show()
     return app.exec()
 

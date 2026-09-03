@@ -9,6 +9,18 @@ import re
 from datetime import datetime
 from pathlib import Path
 
+def vault_link(path, vault):
+    """A vault-relative path for a [[wikilink]] or ![[embed]]. Obsidian wants
+    forward slashes on every platform; os.path.relpath gives backslashes on
+    Windows, which produced ![[Transcriptions\\audio\\...]] and a broken embed
+    on every Windows recording."""
+    import os
+    rel = os.path.relpath(str(path), str(vault))
+    if rel.endswith(".md"):
+        rel = rel[:-3]
+    return rel.replace(os.sep, "/")
+
+
 FIELDS = ["Schedule", "Area", "Subject", "Start", "End", "Type"]
 GENERATED_MARK = "generated: lecture-pipeline"
 

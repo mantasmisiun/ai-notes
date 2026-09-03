@@ -34,7 +34,9 @@ def first_existing(folder, stamp, exts):
 
 
 def link(path):
-    return "[[" + os.path.relpath(path, VAULT)[:-3] + "]]" if path else ""
+    if not path:
+        return ""
+    return "[[" + os.path.relpath(path, VAULT)[:-3].replace(os.sep, "/") + "]]"
 
 
 written = 0
@@ -72,7 +74,7 @@ for lect_dir in sorted(candidates):
             link(live),
             link(tr),
             link(rawn if os.path.exists(rawn) else None),
-            "[[" + os.path.relpath(note, VAULT)[:-3] + "]]",
+            "[[" + os.path.relpath(note, VAULT)[:-3].replace(os.sep, "/") + "]]",
             "yes" if au else "",
         ))
 

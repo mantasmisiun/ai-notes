@@ -98,37 +98,69 @@ class Live:
         segments, _ = model.transcribe(
             audio, language=LANGUAGE, vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
-            condition_on_previous_text=False)
+            condition_on_previous_text=False,
+            word_timestamps=True)
 
-        # Only the last interval is still in flux; everything that ends before
-        # it has had the full window of context and will not improve.
+        # Only the last interval is still in flux; everything before it has had
+        # the full window of context and will not improve.
         cutoff_abs = now - INTERVAL_SECS
 
-        # Both decisions are made on where a segment ENDS. Settling by end but
-        # skipping by start meant a segment that straddled the cutoff was shown
-        # provisionally, then skipped next pass as "already settled" when it
-        # never had been. Sentences spanning a boundary vanished, which with a
-        # short interval was a large share of natural speech.
+        # Settle WORDS, not segments. Whisper breaks segments mostly at
+        # punctuation, and a model that emits none, or a speaker who never
+        # pauses, yields segments that run to the present on every pass. Then
+        # nothing ever ends before the cutoff, nothing settles, and once the
+        # window slides the beginning falls off the buffer unwritten. Replaying
+        # a real recording showed settled_until stuck at 0.0 for a full minute
+        # and the first thirty words lost.
         keep, tail, settled_to = [], [], self.settled_until
         for seg in segments:
-            text = seg.text.strip()
-            if not text:
+            # Whisper's own confidence statistics flag hallucinations. High
+            # compression ratio is repetition, very low log-probability is
+            # guessing, high no-speech probability is silence being narrated.
+            # A final flush on trailing silence produced a dozen copies of one
+            # invented word before this filter existed.
+            if (getattr(seg, "no_speech_prob", 0) > 0.6
+                    or getattr(seg, "compression_ratio", 0) > 2.4
+                    or getattr(seg, "avg_logprob", 0) < -1.0):
                 continue
-            start_abs, end_abs = buf_start + seg.start, buf_start + seg.end
-            if end_abs <= self.settled_until:
-                continue                      # wholly covered by settled text
-            if end_abs <= cutoff_abs:
-                keep.append(text)
-                settled_to = max(settled_to, end_abs)
-            else:
-                tail.append(text)
+            words = seg.words or []
+            units = ([(w.start, w.end, w.word.strip()) for w in words] if words
+                     else [(seg.start, seg.end, seg.text.strip())])
+            for w_start, w_end, text in units:
+                if not text:
+                    continue
+                start_abs, end_abs = buf_start + w_start, buf_start + w_end
+                # Skip by where the word STARTS, with tolerance. Re-alignment
+                # shifts a word's end by a fraction of a second between passes,
+                # so a word settled just before the cutoff reappeared just after
+                # the settled mark on the next pass and was written twice.
+                if start_abs < self.settled_until - 0.15 or end_abs <= self.settled_until:
+                    continue
+                if end_abs <= cutoff_abs:
+                    keep.append(text)
+                    settled_to = max(settled_to, end_abs)
+                else:
+                    tail.append(text)
+
+        # collapse a word repeated back to back, which is never speech
+        def dedupe(ws):
+            out = []
+            for w in ws:
+                if not out or out[-1].lower() != w.lower():
+                    out.append(w)
+            return out
+        keep, tail = dedupe(keep), dedupe(tail)
+        if keep and self.settled.split() and keep[0].lower() == self.settled.split()[-1].lower():
+            keep = keep[1:]
 
         if keep:
             self.settled = (self.settled + " " + " ".join(keep)).strip() + " "
-            # advance only as far as text was actually emitted, never to the
-            # cutoff itself, so nothing can be claimed settled without appearing
             self.settled_until = settled_to
         self.write(" ".join(tail))
+
+    def flush_all(self, model, buf_bytes, buf_start, now):
+        """At stop there is no later pass to revise the tail, so settle it all."""
+        self.update(model, buf_bytes, buf_start, now + INTERVAL_SECS + 1)
 
 
 def finalise():
@@ -157,7 +189,9 @@ def finalise():
         pass                       # never let bookkeeping lose a recording
 
     if r.returncode == 0 and os.path.exists(ogg_path):
-        rel = os.path.relpath(ogg_path, vault)
+        # forward slashes: os.path.relpath returns backslashes on Windows and
+        # Obsidian does not resolve those
+        rel = os.path.relpath(ogg_path, vault).replace(os.sep, "/")
         mb  = os.path.getsize(ogg_path) / 1e6
         os.remove(raw_path)
         append(f"\n\n---\n\n## Recording\n\n![[{rel}]]\n\n"
@@ -172,25 +206,6 @@ def main():
     # "none" means the benchmark found nothing on this machine that keeps up
     # live, and the user chose to record anyway. Audio is still captured and
     # converted; the accurate transcript comes later from a machine that can.
-    record_only = MODEL.strip().lower() in ("", "none")
-    log(f"model={MODEL!r} backend={BACKEND} device={DEVICE} compute={COMPUTE} "
-        f"window={WINDOW_SECS}s interval={INTERVAL_SECS}s language={LANGUAGE}")
-    if record_only:
-        log("record-only mode: no live transcription on this machine")
-        append("*Recording audio only: no live transcript on this machine. "
-               "The transcript and notes are produced afterwards.*\n\n")
-        model = None
-    else:
-        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}` on {DEVICE}, "
-               f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
-        model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
-                             cpu_threads=THREADS)
-        log("model loaded")
-        append("*ready, recording*\n\n")
-
-    # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
-    # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
-    # avfoundation on macOS, a named DirectShow device on Windows.
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
     import platform_support as ps
     global _quiet
@@ -212,8 +227,6 @@ def main():
 
     # Everything record.py wrote stays as the header; the body below it is
     # rewritten each pass, because the tail of a rolling window can change.
-    header = open(note_path, encoding="utf-8").read()
-    live = Live(header)
 
     win_bytes  = RATE * 2 * WINDOW_SECS
     step_bytes = RATE * 2 * INTERVAL_SECS
@@ -244,6 +257,38 @@ def main():
                 chunks_q.put(data)
 
     threading.Thread(target=reader, daemon=True).start()
+
+    # Capture is already running; the first pass will pick up the backlog.
+    record_only = MODEL.strip().lower() in ("", "none")
+    log(f"model={MODEL!r} backend={BACKEND} device={DEVICE} compute={COMPUTE} "
+        f"window={WINDOW_SECS}s interval={INTERVAL_SECS}s language={LANGUAGE}")
+    if record_only:
+        log("record-only mode: no live transcription on this machine")
+        append("*Recording audio only: no live transcript on this machine. "
+               "The transcript and notes are produced afterwards.*\n\n")
+        model = None
+    else:
+        append(f"*Model `{os.path.basename(MODEL.rstrip('/'))}` on {DEVICE}, "
+               f"{WINDOW_SECS}s window every {INTERVAL_SECS}s. Loading...*\n")
+        model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE,
+                             cpu_threads=THREADS)
+        log("model loaded")
+        append("*ready, recording*\n\n")
+    ready = os.environ.get("LECTURE_READY_FILE", "")
+    if ready:
+        try:
+            Path(ready).touch()
+        except Exception:
+            pass
+
+    # LECTURE_INPUT lets a test run use a synthetic source instead of the mic.
+    # Otherwise the spec comes from the platform layer: PulseAudio on Linux,
+    # avfoundation on macOS, a named DirectShow device on Windows.
+
+    # Everything record.py and the load messages wrote stays as the header; the
+    # body below it is rewritten each pass because the tail can change.
+    header = open(note_path, encoding="utf-8").read()
+    live = Live(header)
 
     buf = b""                 # the rolling window, at most win_bytes
     since_pass = 0            # bytes accumulated since the last transcription
@@ -285,9 +330,9 @@ def main():
                 since_pass = 0
 
         log(f"stopping after {total / (RATE * 2):.0f}s of audio")
-        if model is not None and buf and since_pass:
+        if model is not None and buf:
             now = total / (RATE * 2)
-            live.update(model, buf, now - len(buf) / (RATE * 2), now)
+            live.flush_all(model, buf, now - len(buf) / (RATE * 2), now)
             log(f"final pass done; settled {len(live.settled.split())} words")
     finally:
         ff.terminate()
