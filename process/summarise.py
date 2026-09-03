@@ -5,7 +5,7 @@ Two passes over the transcript because a lecture is far longer than the model's
 context window, then a short third call for a topic to name the file with.
 Prints the path it wrote, which run.sh records as the completion marker.
 """
-import json, os, re, sys, time, urllib.request, datetime
+import json, os, re, sys, threading, time, urllib.request, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "..", "shared"))
@@ -26,6 +26,7 @@ MODEL  = os.environ.get("LECTURE_LLM", "llama3.1:8b")
 # are several times longer. Too small a window silently truncates the input
 # and the note loses whole sections without saying so.
 NUMCTX = int(os.environ.get("LECTURE_NUMCTX", "16384"))
+REQUEST_DEADLINE = int(os.environ.get("LECTURE_REQUEST_DEADLINE", "900"))
 WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "2500"))
 SRCLANG   = os.environ.get("LECTURE_LANGUAGE", "en")
 NOTELANG  = os.environ.get("LECTURE_NOTE_LANGUAGE", SRCLANG)
@@ -39,16 +40,35 @@ def ask(prompt, predict=None):
                        "stream": False, "options": opts}).encode()
     req = urllib.request.Request(f"http://{HOST}/api/generate", body,
                                  {"Content-Type": "application/json"})
+    # urllib's timeout applies to each socket read, not to the whole request, so
+    # a generation that trickles out slowly never trips it and can run for
+    # hours. Enforce a deadline on the call as a whole.
+    box = {}
+
+    def _call():
+        try:
+            with urllib.request.urlopen(req, timeout=120) as r:
+                box["value"] = json.load(r)["response"].strip()
+        except BaseException as exc:            # carried back to the caller
+            box["error"] = exc
+
+    t = threading.Thread(target=_call, daemon=True)
+    t.start()
+    t.join(timeout=REQUEST_DEADLINE)
+
     try:
-        with urllib.request.urlopen(req, timeout=900) as r:
-            return json.load(r)["response"].strip()
+        if t.is_alive():
+            raise TimeoutError("deadline exceeded")
+        if "error" in box:
+            raise box["error"]
+        return box["value"]
     except TimeoutError:
         # A single chunk taking over fifteen minutes means the model is not
         # running on the GPU. Ollama does not fail when a model is too large,
         # it splits it and runs the remainder on the CPU, which is perhaps ten
         # times slower and looks like the summariser having hung.
         raise SystemExit(
-            f"timed out after 15 minutes on one chunk with {MODEL}.\n"
+            f"gave up after {REQUEST_DEADLINE // 60} minutes on one chunk with {MODEL}.\n"
             f"That normally means it does not fit in VRAM and Ollama has put\n"
             f"part of it on the CPU. Check with:\n"
             f"  OLLAMA_HOST={HOST} ollama ps\n"
