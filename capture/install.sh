@@ -48,7 +48,7 @@ AUTOSTART
   update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
   mkdir -p "$VAULT/$TRANSCRIPTIONS_DIR"/{live,transcripts,audio,unfiled} "$AUDIO_SCRATCH"
   echo
-  echo "done. Pin 'Lecture transcription' to your panel from the application launcher."
+  echo "done. Search your applications for 'Transcribe' and pin it to the panel."
   exit 0
 fi
 

@@ -134,7 +134,7 @@ and a notes file, which only you write. They cross-link, so both open side by
 side in Obsidian.
 
 They are separate files rather than two halves of one because the transcript is
-appended to every twelve seconds. A single Obsidian buffer holding both your
+rewritten every few seconds. A single Obsidian buffer holding both your
 typing and those appends loses one of them on save.
 
 What you write is used twice. It goes into the summarising prompt with an
@@ -150,7 +150,7 @@ output, so it can never read its own summaries back in.
 ## Requirements
 
 Capture: Linux with PipeWire or PulseAudio, ffmpeg, Python 3.11+, systemd.
-PyQt6 for the tray indicator.
+PyQt6 for the recording indicator: a tray dot on Linux, a window elsewhere.
 
 Processing: an NVIDIA GPU with at least 8 GB, ffmpeg, Python 3.11+, Ollama.
 
@@ -182,9 +182,10 @@ Download the repository, either with `git clone` or **Code → Download ZIP** on
 GitHub, then open the `windows` folder and **double-click `install.bat`**.
 
 It checks prerequisites and installs any that are missing, asks three questions,
-builds the environment, fetches the model, and puts a **Record lecture**
+builds the environment, measures the machine, and puts a **Transcribe**
 shortcut on your Desktop. Double-click that to start, double-click again to
-stop; a red dot sits in the system tray while it records.
+stop; a window with a flashing red light stays on top while it records,
+with a Stop button that waits for the last words to be transcribed.
 
 If it installs prerequisites it will ask you to close PowerShell and run it
 once more, because a running shell does not see a newly installed program.
@@ -286,9 +287,9 @@ Check it with `schtasks /Query /TN lecture-notes`, and read
 **Known gaps on Windows.** Sleep inhibition uses `SetThreadExecutionState`,
 which stops idle sleep but not a lid close on every machine, so a recording can
 end early. Notifications fall back to a console line rather than a toast. And
-the hardware benchmark and the Vulkan backend are Linux only, so the model is
-whatever `config.sh` names rather than something measured; `small.en` is the
-safe starting value.
+the Vulkan backend is Linux only. The benchmark runs on Windows too, so the
+model is measured rather than assumed, and Lithuanian gets the dedicated
+model there as well.
 
 **If you install both halves on one machine**, processing refuses to start while
 a recording is in progress. The live transcript has a person waiting on it, so it
@@ -310,7 +311,9 @@ Summarisation is not deterministic unless temperature is zero. It is set to zero
 here so that a prompt change can be evaluated against the previous output rather
 than against a different sample.
 
-Capture is Linux only. The transcription and summarising stages are portable
-Python, but the wrapper around them uses systemd, flock, systemd-inhibit and
-PulseAudio capture, none of which exist on Windows. Porting means moving that
-wrapper into Python rather than translating it.
+The main installer is bash, so Windows uses `windows\install.bat` instead.
+Everything else runs there: capture, the benchmark, transcription and
+summarising. Two gaps remain on Windows. Sleep inhibition uses
+`SetThreadExecutionState`, which stops idle sleep but not a lid close on every
+machine, so a recording can end early. And notifications fall back to a console
+line rather than a toast.

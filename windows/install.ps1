@@ -240,7 +240,7 @@ if ($wantProcess -eq 1) {
 # ---- config ----------------------------------------------------------------
 $asrModel = "large-v3"; $asrCompute = "float16"
 if ($ltModel) { $asrModel = ($ltModel -replace '\\', '/'); $asrCompute = "int8" }
-Step "Writing config.sh"
+Step "Saving your choices"
 @"
 # Written by windows/install.ps1. Paths and model choices, no secrets.
 VAULT="$vaultFwd"
@@ -261,7 +261,6 @@ LECTURE_ASR_MODEL="$asrModel"
 LECTURE_ASR_COMPUTE="$asrCompute"
 LECTURE_LLM="qwen3:8b"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
-Say "  done"
 
 # ---- vault layout and a shortcut -------------------------------------------
 Step "Preparing the vault and a shortcut"
@@ -293,8 +292,8 @@ Say "To record: double-click 'Transcribe' on your Desktop."
 Say "A window with a flashing red light stays on top while it records."
 Say "Press Stop recording, or double-click the shortcut again."
 Say ""
-Say "Transcript and your notes appear in:"
-Say "  $vault\Transcriptions\live"
-Say "Type in the 'my notes' file, never in the transcript."
+Say "While recording, two files appear:"
+Say "  $vault\Transcriptions\live         the live transcript, rewritten as it goes"
+Say "  $vault\Transcriptions\raw notes    yours: write here, fill in the table to file it"
 Say ""
 Read-Host "Press Enter to close"

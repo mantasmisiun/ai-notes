@@ -60,8 +60,8 @@ class RecordingWindow(QWidget):
         self.clock.setStyleSheet("font-size: 22pt;")
         lay.addWidget(self.clock)
 
-        self.hint = QLabel("Type your notes in the 'my notes' file,\n"
-                           "not in the transcript.")
+        self.hint = QLabel("Write in your raw note, not in the transcript.\n"
+                           "The transcript is rewritten as it goes.")
         self.hint.setStyleSheet("color: palette(mid);")
         lay.addWidget(self.hint)
 

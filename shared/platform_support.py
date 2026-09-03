@@ -134,7 +134,7 @@ def inhibit_wrapper(reason="Recording a lecture"):
     context manager. Empty elsewhere; those platforms use KeepAwake instead."""
     if LINUX and _has("systemd-inhibit"):
         return ["systemd-inhibit", "--what=sleep:idle:handle-lid-switch",
-                "--who=Lecture transcription", f"--why={reason}"]
+                "--who=ai-notes", f"--why={reason}"]
     return []
 
 
