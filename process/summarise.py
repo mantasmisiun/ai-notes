@@ -30,6 +30,9 @@ REQUEST_DEADLINE = int(os.environ.get("LECTURE_REQUEST_DEADLINE", "900"))
 # Detailed notes on a 2500 word chunk need perhaps 1500 tokens. This cap is
 # generous for that and still stops a model that has started looping.
 MAX_PREDICT      = int(os.environ.get("LECTURE_MAX_PREDICT", "4096"))
+# Generous, because a reasoning model spends part of its budget thinking
+# before it writes the title at all.
+TOPIC_PREDICT    = int(os.environ.get("LECTURE_TOPIC_PREDICT", "300"))
 WORDS  = int(os.environ.get("LECTURE_CHUNK_WORDS", "2500"))
 SRCLANG   = os.environ.get("LECTURE_LANGUAGE", "en")
 NOTELANG  = os.environ.get("LECTURE_NOTE_LANGUAGE", SRCLANG)
@@ -80,7 +83,18 @@ def ask(prompt, predict=None):
             f"  OLLAMA_HOST={HOST} ollama ps\n"
             f"and pick a smaller one by re-running the installer with\n"
             f"'Change models only', or lower LECTURE_NUMCTX in config.sh.")
-    return "".join(out).strip()
+    text = "".join(out)
+    # Hybrid reasoning models emit a <think> block before the answer. Strip it,
+    # and handle the case where the budget ran out mid-thought and there is no
+    # answer after it at all.
+    if "</think>" in text:
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+        text = re.sub(r"^.*?</think>", "", text, flags=re.S)
+    elif "<think>" in text:
+        # Budget ran out mid-thought: there is no answer, only reasoning. Better
+        # nothing than a title made of the model talking to itself.
+        text = ""
+    return text.strip()
 
 
 def unfence(t):
@@ -233,7 +247,13 @@ if own:
 note = unfence(ask(combine.format(sections="\n\n---\n\n".join(summaries))))
 
 print("  titling", flush=True)
-topic = safe(unfence(ask(P["topic"].format(note=note[:4000]), predict=30)).splitlines()[0])
+raw_topic = unfence(ask(P["topic"].format(note=note[:4000]), predict=TOPIC_PREDICT))
+lines = [l for l in raw_topic.splitlines() if l.strip()]
+# A note without a title is filed under its timestamp. Losing a completed
+# summary because the model returned nothing would be absurd.
+topic = safe(lines[0]) if lines else ""
+if not topic:
+    print("  no title returned; filing under the timestamp", flush=True)
 
 if subject_dir:
     dest_dir = os.path.join(subject_dir, SESSIONS)
