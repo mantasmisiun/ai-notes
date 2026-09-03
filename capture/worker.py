@@ -190,35 +190,63 @@ def main():
 
     win_bytes  = RATE * 2 * WINDOW_SECS
     step_bytes = RATE * 2 * INTERVAL_SECS
+
+    # Reading ffmpeg and transcribing must not share a thread. A pass blocks
+    # for seconds, and on a machine near its limit passes run back to back, so
+    # nothing drained ffmpeg and its capture buffer overflowed: the log filled
+    # with "real-time buffer too full, frame dropped" and audio was lost. The
+    # reader thread owns the pipe and the raw file; the main thread only
+    # transcribes from a snapshot of the rolling window.
+    import queue
+    chunks_q = queue.Queue()
+
+    def reader():
+        with open(raw_path, "wb") as raw:
+            while True:
+                data = ff.stdout.read(4096)
+                if not data:
+                    chunks_q.put(None)
+                    return
+                raw.write(data)
+                raw.flush()
+                chunks_q.put(data)
+
+    threading.Thread(target=reader, daemon=True).start()
+
     buf = b""                 # the rolling window, at most win_bytes
     since_pass = 0            # bytes accumulated since the last transcription
     total = 0                 # bytes of audio seen, for absolute timing
+    ended = False
 
     try:
-        with open(raw_path, "wb") as raw:
-            while not stop_requested():
-                data = ff.stdout.read(4096)
-                if not data:
-                    live.write("\n\n*Audio source ended unexpectedly.*")
-                    break
-                raw.write(data)
-                raw.flush()
-                os.fsync(raw.fileno())
-
+        while not stop_requested() and not ended:
+            # take everything that has arrived; block briefly only when idle
+            try:
+                data = chunks_q.get(timeout=0.25)
+            except queue.Empty:
+                continue
+            while data is not None:
                 buf += data
                 total += len(data)
                 since_pass += len(data)
-                if len(buf) > win_bytes:
-                    buf = buf[-win_bytes:]
+                try:
+                    data = chunks_q.get_nowait()
+                except queue.Empty:
+                    break
+            if data is None:
+                ended = True
+                live.write("\n\n*Audio source ended unexpectedly.*")
+            if len(buf) > win_bytes:
+                buf = buf[-win_bytes:]
 
-                if model is not None and since_pass >= step_bytes:
-                    now = total / (RATE * 2)
-                    live.update(model, buf, now - len(buf) / (RATE * 2), now)
-                    since_pass = 0
-
-            if model is not None and buf and since_pass:
+            if model is not None and since_pass >= step_bytes:
                 now = total / (RATE * 2)
                 live.update(model, buf, now - len(buf) / (RATE * 2), now)
+                since_pass = 0
+
+        if model is not None and buf and since_pass:
+            now = total / (RATE * 2)
+            live.update(model, buf, now - len(buf) / (RATE * 2), now)
     finally:
         ff.terminate()
         try:

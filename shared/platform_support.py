@@ -96,7 +96,9 @@ def default_input_device():
         raise RuntimeError(
             "No DirectShow audio device found. List them with:\n"
             "  ffmpeg -list_devices true -f dshow -i dummy")
-    return ["-f", "dshow", "-i", f"audio={name}"]
+    # DirectShow's default real-time buffer is small; give it headroom so a
+    # brief stall on the reading side does not drop audio.
+    return ["-f", "dshow", "-rtbufsize", "64M", "-i", f"audio={name}"]
 
 
 # --- keeping the machine awake while recording ------------------------------
