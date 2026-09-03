@@ -6,22 +6,10 @@ looks finished to the next pass.
 """
 import os, sys, datetime
 
-# The pip nvidia-* wheels ship their .so files inside the venv, where the
-# dynamic loader will not find them. glibc reads LD_LIBRARY_PATH at process
-# start, so setting it from Python is too late; preload them globally instead.
-import ctypes, glob
-try:
-    import nvidia
-    libs = [so for root in nvidia.__path__
-            for so in glob.glob(os.path.join(root, "*", "lib", "*.so*"))]
-    for _ in range(2):                     # second pass resolves load order
-        for so in libs:
-            try:
-                ctypes.CDLL(so, mode=ctypes.RTLD_GLOBAL)
-            except OSError:
-                pass
-except ImportError:
-    pass
+import sys as _sys
+_sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                 "..", "shared"))
+import cuda_libs; cuda_libs.enable()
 
 from faster_whisper import WhisperModel
 

@@ -148,6 +148,13 @@ if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
 & "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
+if ($nvidia.Count -gt 0) {
+    # The benchmark and the live pass run from THIS venv, so the CUDA libraries
+    # have to be here. Without them faster-whisper reports a missing
+    # cublas64_12.dll, which reads like a driver problem and is not.
+    Say "  adding CUDA libraries"
+    & "$Root\capture\venv\Scripts\pip.exe" install -q nvidia-cublas-cu12 nvidia-cudnn-cu12
+}
 Say "  done"
 
 Step "Measuring this machine"

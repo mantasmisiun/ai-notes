@@ -10,6 +10,9 @@ import os, sys, signal, subprocess, datetime, threading
 from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "shared"))
+import cuda_libs; cuda_libs.enable()
 from faster_whisper import WhisperModel
 
 RATE       = 16000

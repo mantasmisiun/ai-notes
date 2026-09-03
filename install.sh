@@ -220,7 +220,7 @@ elif [ "$want_capture" = 1 ]; then
   fi
 
   say "--- preparing to benchmark this machine ---"
-  BUILD_VULKAN=$build_vulkan "$ROOT/capture/install.sh" --prereqs
+  BUILD_VULKAN=$build_vulkan HAS_CUDA=$HAS_CUDA "$ROOT/capture/install.sh" --prereqs
   say
 
   wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
