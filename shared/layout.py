@@ -2,7 +2,7 @@
 """Where the pipeline's files live inside the vault, and the one rule about them.
 
     Transcriptions/
-      your notes/       yours: edit freely
+      my notes/       yours: edit freely
       auto/            written by the pipeline; anything typed here is lost
         live/          rewritten while recording, deleted once the note exists
         transcripts/   generated once from the audio, kept
@@ -14,7 +14,7 @@ generated folder also carries an _about.md written from the live config, so
 the retention it states is never stale the way a number in a folder name is.
 
 Earlier versions kept the four generated folders directly under
-Transcriptions, beside your notes, with nothing to say which were safe to edit.
+Transcriptions, beside my notes, with nothing to say which were safe to edit.
 migrate() moves such a vault to this layout and rewrites every link, so nobody
 moves anything by hand. It runs on both machines and is idempotent, so
 whichever side sees the old layout first does the work and the other finds
@@ -26,8 +26,8 @@ from pathlib import Path
 
 AUTO = "auto"
 GENERATED = ("live", "transcripts", "audio", "unfiled")
-RAW = "your notes"
-RAW_OLD = "raw notes"          # the folder's name before it was renamed
+RAW = "my notes"
+RAW_OLD = ("raw notes", "your notes")   # earlier names, migrated on sight
 ABOUT = "_about.md"
 
 
@@ -55,8 +55,9 @@ def link(tr_name, kind, name):
 def _patterns(tr_name):
     pats = [(re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(k) + r"[/\\]"),
              f"{tr_name}/{AUTO}/{k}/") for k in GENERATED]
-    pats.append((re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(RAW_OLD) + r"[/\\]"),
-                 f"{tr_name}/{RAW}/"))
+    for old in RAW_OLD:
+        pats.append((re.compile(re.escape(tr_name) + r"[/\\]" + re.escape(old) + r"[/\\]"),
+                     f"{tr_name}/{RAW}/"))
     return pats
 
 
@@ -71,14 +72,13 @@ def migrate(notes, vault, log=print):
     True when there was something to move."""
     notes, vault = Path(notes), Path(vault)
     old = [k for k in GENERATED if (notes / k).is_dir()]
-    if (notes / RAW_OLD).is_dir():
-        old.append(RAW_OLD)
+    old += [k for k in RAW_OLD if (notes / k).is_dir()]
     if not old:
         return False
     moved = 0
     for k in old:
         src = notes / k
-        dst = raw_dir(notes) if k == RAW_OLD else auto_dir(notes, k)
+        dst = raw_dir(notes) if k in RAW_OLD else auto_dir(notes, k)
         dst.mkdir(parents=True, exist_ok=True)
         for f in list(src.iterdir()):
             if f.is_dir():
@@ -183,11 +183,11 @@ note and fill in the table: link a Schedule, or give an Area and a Subject.
 The pipeline moves the note on its next run. Do not drag notes out of here by
 hand: the pipeline would not know where they went.
 """,
-        raw_dir(notes): """# Your notes
+        raw_dir(notes): """# My notes
 
 One note per recording, created when recording starts, yours from then on.
 Write in it during the lecture. Fill in the table to say what the recording
-is and where to file it; the summariser reads your notes and trusts them over
+is and where to file it; the summariser reads my notes and trusts them over
 the transcript for names and terms. The pipeline only fills in the End time
 and adds a link to the finished note.
 """,

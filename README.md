@@ -115,7 +115,7 @@ to find than one in a holding pen.
 
 ```
 Transcriptions/
-  your notes/    yours: one per recording, edit freely, fill the table to file it
+  my notes/    yours: one per recording, edit freely, fill the table to file it
   auto/         written by the pipeline; anything typed here is lost
     live/         rough, rewritten during the lecture, deleted once the note exists
     transcripts/  accurate, kept; every paragraph has a block id the notes link to
@@ -140,7 +140,7 @@ rewritten every few seconds. A single Obsidian buffer holding both your
 typing and those appends loses one of them on save.
 
 What you write is used twice. It goes into the summarising prompt with an
-instruction to trust your notes over the transcript on terminology and
+instruction to trust my notes over the transcript on terminology and
 emphasis, which is exactly where speech recognition fails. And it is copied
 verbatim into the final note, so your own thinking survives rather than being
 paraphrased away.

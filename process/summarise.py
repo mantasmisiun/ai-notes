@@ -523,7 +523,7 @@ with open(tmp, "w", encoding="utf-8") as f:
         f.write(f"module: {m['code']}\n")
     f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n---\n\n")
     f.write(note.rstrip() + "\n\n---\n\n")
-    f.write(f"Your notes: [[{raw_link}]]\n")
+    f.write(f"My notes: [[{raw_link}]]\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")
