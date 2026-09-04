@@ -170,7 +170,7 @@ STUDENT'S OWN NOTES:
 {notes}
 
 """,
-        "notes_heading": "Your notes",
+        "notes_heading": "My notes",
 
         "topic": """Below is a summary of {context}.
 
@@ -283,7 +283,7 @@ STUDENTO PASTABOS:
 {notes}
 
 """,
-        "notes_heading": "Jūsų pastabos",
+        "notes_heading": "Mano pastabos",
 
         "topic": """Žemiau pateikta {context} santrauka.
 

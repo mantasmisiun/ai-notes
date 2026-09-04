@@ -23,7 +23,8 @@ def vault_link(path, vault):
 
 # fillable rows first, the two the pipeline fills last
 FIELDS = ["Schedule", "Area", "Subject", "Type", "Start", "End"]
-NOTES_HEADING = "## Your notes"
+NOTES_HEADING = "## My notes"
+OLD_HEADINGS = ("## Your notes",)
 GENERATED_MARK = "generated: lecture-pipeline"
 
 
@@ -79,8 +80,10 @@ def body(path):
     if len(parts) < 2:
         return ""
     own = parts[-1].strip()
-    if own.startswith(NOTES_HEADING):
-        own = own[len(NOTES_HEADING):].strip()
+    for h in (NOTES_HEADING,) + OLD_HEADINGS:
+        if own.startswith(h):
+            own = own[len(h):].strip()
+            break
     return own
 
 
