@@ -116,6 +116,8 @@ to find than one in a holding pen.
 ```
 Transcriptions/
   my notes/    yours: one per recording, edit freely, fill the table to file it
+                link slides or handouts here, [[Week 3 slides.pdf]], and the
+                summariser reads them as the authority on names and terms
   auto/         written by the pipeline; anything typed here is lost
     live/         rough, rewritten during the lecture, deleted once the note exists
     transcripts/  accurate, kept; every paragraph has a block id the notes link to
