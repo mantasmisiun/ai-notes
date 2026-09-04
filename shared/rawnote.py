@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The your note: your own writing, plus a small table that decides where the
+"""The user's note: their own writing, plus a small table that decides where the
 session is filed.
 
 Written by capture, read by processing, so the format lives in one place. A

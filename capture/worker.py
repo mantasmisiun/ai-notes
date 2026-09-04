@@ -317,7 +317,8 @@ def finalise():
         if notes_root.name == "auto":            # audio lives in auto/audio
             notes_root = notes_root.parent
         stamp_ = Path(ogg_path).stem
-        rn = notes_root / "your notes" / f"{stamp_}.md"
+        import layout
+        rn = layout.raw_dir(notes_root) / f"{stamp_}.md"
         if rn.exists():
             rawnote.set_field(rn, "End", f"{datetime.datetime.now():%Y-%m-%d %H:%M}")
     except Exception:
