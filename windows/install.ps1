@@ -195,7 +195,7 @@ if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
     }
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
-& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
+& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6 pypdf openpyxl
 if ($nvidia.Count -gt 0) {
     # The benchmark and the live pass run from THIS venv, so the CUDA libraries
     # have to be here. Without them faster-whisper reports a missing

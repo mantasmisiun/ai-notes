@@ -172,6 +172,16 @@ STUDENT'S OWN NOTES:
 """,
         "notes_heading": "My notes",
 
+        "material_intro": """Course material the student linked for this session: slides, a
+handout, a syllabus. Treat it as the authority on names, terms and formulas,
+above the transcript. Use it to get those right and to follow the lecturer's
+structure; do not summarise the material itself, only what was said.
+
+COURSE MATERIAL:
+{material}
+
+""",
+
         "topic": """Below is a summary of {context}.
 
 Reply with a short title for it: three to seven words, naming the specific
@@ -284,6 +294,16 @@ STUDENTO PASTABOS:
 
 """,
         "notes_heading": "Mano pastabos",
+
+        "material_intro": """Studento susieta šio užsiėmimo medžiaga: skaidrės, dalijamoji
+medžiaga, programa. Laikyk ją patikimesne už transkripciją vardams, terminams
+ir formulėms. Naudok ją jiems tiksliai užrašyti ir dėstytojo struktūrai sekti;
+pačios medžiagos neatpasakok, tik tai, kas buvo pasakyta.
+
+MEDŽIAGA:
+{material}
+
+""",
 
         "topic": """Žemiau pateikta {context} santrauka.
 
