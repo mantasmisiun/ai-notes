@@ -548,7 +548,7 @@ if area and subject:
     except Exception as e:
         print(f"  could not update the timetable: {e}")
 
-# link the your note back to the session it produced
+# link the user's note back to the session it produced
 try:
     if os.path.exists(raw_path):
         rel_out = os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/")

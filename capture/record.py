@@ -134,7 +134,7 @@ def main():
         "> instead. They are picked up automatically when the summary is written.\n\n"
         f"# {stamp} {label}\n\n", encoding="utf-8")
 
-    # The your note is yours and permanent. Area and Subject decide where the
+    # The user's note is theirs and permanent. Area and Subject decide where the
     # session is filed, prefilled from the timetable when it knows, blank when
     # this is something the schedule has never heard of.
     if not mynotes.exists():
