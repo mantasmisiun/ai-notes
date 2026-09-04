@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "..", "shared"))
 import timetable
 import layout
+import materials
 import prompts
 import rawnote
 
@@ -404,6 +405,18 @@ print(f"{n_words} words in {len(parts)} chunk(s)", flush=True)
 # note is now the section notes themselves, so a name the student corrected
 # has to be corrected where the detail is written.
 notes_intro = P["notes_intro"].format(notes=own) if own else ""
+
+# Slides and handouts linked from the student's note. Each call gets the
+# passages that share the most words with what it is working on, within a
+# budget, so a sixty-slide deck still fits beside a chunk of transcript.
+mat_docs, mat_msgs = materials.collect(own, VAULT, near=os.path.dirname(raw_path))
+for msg in mat_msgs:
+    print("  " + msg, flush=True)
+
+
+def material_block(query):
+    sel = materials.select(mat_docs, query, 1500) if mat_docs else ""
+    return P["material_intro"].format(material=sel) if sel else ""
 role_line = prompts.roles(kind, NOTELANG)
 
 # Names travel forward. Each chunk sees only its own text and the transcript
@@ -411,6 +424,8 @@ role_line = prompts.roles(kind, NOTELANG)
 # point said Nasson and after it Nasona. The student's notes rank first: a name
 # typed by someone who was there beats the speech recogniser.
 names = extract_names(own) if own else []
+if mat_docs:
+    extract_names(materials.all_text(mat_docs, 3000), names)
 
 summaries = []
 t_start = time.time()
@@ -421,7 +436,7 @@ for i, (start, end, c) in enumerate(parts, 1):
     # cut without writing the same point twice
     prior = P["prior"].format(prior=" ".join(prev_text.split()[-120:])) if prev_text else ""
     names_block = P["names"].format(names="; ".join(names)) if names else ""
-    summaries.append(ask(notes_intro + P["section"].format(
+    summaries.append(ask(notes_intro + material_block(c) + P["section"].format(
         chunk=c, prior=prior, names=names_block, roles=role_line)))
     extract_names(summaries[-1], names)
     prev_text = c
@@ -438,7 +453,7 @@ for i, (start, end, c) in enumerate(parts, 1):
 print("  combining", flush=True)
 ask_followups = prompts.wants_followups(" ".join(b for _, b in paras) + " " + own, NOTELANG)
 followups = P["followups"] if ask_followups else ""
-top = unfence(ask(notes_intro + P["combine"].format(
+top = unfence(ask(notes_intro + material_block(" ".join(summaries)) + P["combine"].format(
     sections="\n\n---\n\n".join(summaries), followups=followups)))
 # whatever the model calls it, the section is kept only when it was asked for
 top, open_q = split_off(top, H["open"])
