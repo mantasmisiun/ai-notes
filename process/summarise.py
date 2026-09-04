@@ -244,7 +244,16 @@ def extract_names(text, seen=None):
     for m in MID_CAP.finditer(text):
         counts[m.group(1)] = counts.get(m.group(1), 0) + 1
     cands = [b.strip() for b in BOLD.findall(text)]
-    cands += [m.group(1) for m in NAME_RUN.finditer(text)]
+    for m in NAME_RUN.finditer(text):
+        run = m.group(1)
+        # a run that opens a sentence or a line and is bridged by "the" or
+        # "of" starts with an ordinary capitalised word: "Mention the Google
+        # Aristotle study" names Google Aristotle, not Mention
+        before = text[:m.start()].rstrip()
+        bridged = re.search(r"\b(?:de|del|la|le|von|van|of|the|da|di)\b", run)
+        if bridged and (not before or before[-1] in ".:!?\n"):
+            run = run[bridged.end():].strip()
+        cands.append(run)
     cands += [w for w, n in counts.items() if n >= 2]
     for c in cands:
         c = re.sub(r"\s+", " ", c).strip(" .,:;")
