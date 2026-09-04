@@ -249,14 +249,19 @@ def extract_names(text, seen=None):
         # a run that opens a sentence or a line and is bridged by "the" or
         # "of" starts with an ordinary capitalised word: "Mention the Google
         # Aristotle study" names Google Aristotle, not Mention
-        before = text[:m.start()].rstrip()
+        before = text[:m.start()].rstrip(" \t")
         bridged = re.search(r"\b(?:de|del|la|le|von|van|of|the|da|di)\b", run)
         if bridged and (not before or before[-1] in ".:!?\n"):
-            run = run[bridged.end():].strip()
+            run = run.split(None, 1)[1] if " " in run else run
+            run = re.sub(r"^(?:de|del|la|le|von|van|of|the|da|di)\s+", "", run, flags=re.I)
         cands.append(run)
     cands += [w for w, n in counts.items() if n >= 2]
+    cands = [re.sub(r"\s+", " ", c).strip(" .,:;") for c in cands]
+    longer = [c for c in cands + seen if " " in c]
     for c in cands:
-        c = re.sub(r"\s+", " ", c).strip(" .,:;")
+        # a single word already inside a longer name adds nothing
+        if " " not in c and any(re.search(rf"\b{re.escape(c)}\b", l) for l in longer):
+            continue
         if c and c not in seen and len(seen) < 60:
             seen.append(c)
     return seen
