@@ -229,13 +229,17 @@ def with_time_lines(notes, start):
 # Proper nouns and bold terms, in order of first appearance. Sentence-initial
 # capitals are ignored unless the word recurs capitalised mid-sentence, so
 # "The" and "Members" do not become names.
-NAME_RUN = re.compile(r"\b([A-ZÀ-Ž][\w'-]+(?:\s+(?:(?:de|del|la|le|von|van|of|the|da|di)\s+)?[A-ZÀ-Ž][\w'-]+)+)")
+# runs stay on one line: "Performing" at the end of a slide and "Slide 2" at
+# the start of the next are not a name
+NAME_RUN = re.compile(r"\b([A-ZÀ-Ž][\w'-]+(?:[ \t]+(?:(?:de|del|la|le|von|van|of|the|da|di)[ \t]+)?[A-ZÀ-Ž][\w'-]+)+)")
+LABEL_RE = re.compile(r"^(?:Slide \d+|Notes|Sheet \w+):[ \t]*", re.M)
 MID_CAP  = re.compile(r"(?<=[a-zà-ž,;:]\s)([A-ZÀ-Ž][\w'-]{2,})")
 BOLD     = re.compile(r"\*\*([^*\n]{2,60})\*\*")
 
 
 def extract_names(text, seen=None):
     seen = seen if seen is not None else []
+    text = LABEL_RE.sub("", text or "")
     counts = {}
     for m in MID_CAP.finditer(text):
         counts[m.group(1)] = counts.get(m.group(1), 0) + 1
