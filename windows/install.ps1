@@ -195,7 +195,7 @@ if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
     }
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
-& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6 pypdf openpyxl
+& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
 if ($nvidia.Count -gt 0) {
     # The benchmark and the live pass run from THIS venv, so the CUDA libraries
     # have to be here. Without them faster-whisper reports a missing
@@ -285,7 +285,7 @@ if ($wantProcess -eq 1) {
             Read-Host "Press Enter to close"; exit 1
         }
     }
-    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6
+    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6 pypdf openpyxl
     Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
     Say "  Then set OLLAMA_KEEP_ALIVE=30s as a user environment variable."
 }
