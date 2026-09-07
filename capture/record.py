@@ -109,7 +109,7 @@ def main():
     # machine sees it first.
     layout.migrate(NOTES, VAULT, log=say, uni=UNI)
     layout.ensure(NOTES)
-    layout.ensure_university(UNI)
+    layout.ensure_files(VAULT)
     layout.write_about(NOTES, int(cfg.get("LECTURE_KEEP_AUDIO_DAYS", "7") or 7))
     SCRATCH.mkdir(parents=True, exist_ok=True)
 

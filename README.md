@@ -124,10 +124,13 @@ Transcriptions/
     audio/        Opus, deleted 7 days after the note is written
     unfiled/      finished notes that do not know their Area and Subject yet
 
+Files/                       the one watched folder: drop a PDF, DOCX, PPTX or XLSX
+                             here and within a minute a note of yours appears in my
+                             notes, its text in auto/transcripts with page.paragraph
+                             markers; fill the note's table and the finished note is
+                             filed. Files kept anywhere else are not processed.
+
 University/<MODULE>/
-  Files/                     yours: drop a PDF, DOCX, PPTX or XLSX here and within a
-                             minute a note of yours appears in my notes, its text in
-                             auto/transcripts with page.paragraph markers
   Documents/                 one finished note per file, written once, yours after
   Timetable <MODULE>.md      yours, read only
   Sessions/

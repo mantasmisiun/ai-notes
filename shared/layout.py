@@ -49,17 +49,22 @@ def ensure(notes):
 FILES = "Files"
 FILES_ABOUT = """# Files
 
-Drop a PDF, DOCX, PPTX or XLSX here, or into a module's own Files folder,
-and within a minute a note of yours appears in my notes to write in while
-you read. The document's text goes to transcripts with page and paragraph
-markers, and a finished note follows in the module's Documents folder, or in
-unfiled for a file dropped here, where its module is not yet known.
+The one place documents are picked up from. Drop a PDF, DOCX, PPTX or XLSX
+here and within a minute a note of yours appears in my notes to write in
+while you read. The document's text goes to transcripts with page and
+paragraph markers, and a finished note follows: in the module's Documents
+folder once your note says which module, in unfiled until then. A file kept
+anywhere else is yours alone and is not processed.
 """
 
 
-def ensure_university(uni):
-    """The inbox for documents that belong to no module yet, with its note."""
-    inbox = Path(uni) / FILES
+def files_dir(vault):
+    return Path(vault) / FILES
+
+
+def ensure_files(vault):
+    """The inbox at the vault root, with its note."""
+    inbox = files_dir(vault)
     inbox.mkdir(parents=True, exist_ok=True)
     p = inbox / ABOUT
     if not p.exists():
@@ -92,11 +97,12 @@ def migrate(notes, vault, log=print, uni=None):
     """Move an old-layout vault under auto/ and rewrite the links. Returns
     True when there was something to move."""
     notes, vault = Path(notes), Path(vault)
-    # documents briefly lived under auto/documents; they belong in a Files
-    # folder under University, the inbox when their module is not known
-    old_docs = notes / AUTO / "documents"
-    if uni and old_docs.is_dir():
-        inbox = Path(uni) / "Files"
+    # the inbox briefly lived at auto/documents, then at University/Files;
+    # it is Files at the vault root, and only that folder is watched
+    inbox = files_dir(vault)
+    for old_docs in [notes / AUTO / "documents"] + ([Path(uni) / FILES] if uni else []):
+        if not old_docs.is_dir() or old_docs == inbox:
+            continue
         inbox.mkdir(parents=True, exist_ok=True)
         n = 0
         for f in list(old_docs.iterdir()):
@@ -110,7 +116,7 @@ def migrate(notes, vault, log=print, uni=None):
             old_docs.rmdir()
         except OSError:
             pass
-        log(f"layout: moved {n} documents from auto/documents to {inbox.relative_to(vault)}")
+        log(f"layout: moved {n} documents from {old_docs.relative_to(vault)} to {FILES}")
     old = [k for k in GENERATED if (notes / k).is_dir()]
     old += [k for k in RAW_OLD if (notes / k).is_dir()]
     if not old:

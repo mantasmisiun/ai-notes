@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""A document in a module's Files folder goes through the same funnel as a
-recording: a note of yours to write in while you read, a "transcript" that is
-the document's text cleaned of everything that is not content, then a
-summary written from both, filed in the module's Documents folder.
+"""A document dropped into Files at the vault root, the one folder that is
+watched, goes through the same funnel as a recording: a note of yours to
+write in while you read, a "transcript" that is the document's text cleaned
+of everything that is not content, then a summary written from both, filed
+in a module's Documents folder once your note's table says which module.
+A file kept anywhere else is yours alone and is not processed.
 
 Everything is keyed by the file's name, not a time: my notes/<name>.md,
 auto/transcripts/<name>.md, <module>/Documents/<name>.md. Rename the file
@@ -18,8 +20,7 @@ minutes so the laptop gets first go. By hand:
 
     python3 process/document.py <vault> [file ...]
 
-A file given from outside the vault is copied into University/Files, the
-inbox for documents that belong to no module yet."""
+A file given from outside the vault is copied into Files first."""
 import datetime
 import os
 import re
@@ -47,21 +48,10 @@ def key_for(path):
     return re.sub(r"\s+", " ", k).strip(" .")[:100]
 
 
-def files_dirs(UNI):
-    """University/Files, the inbox, and every module's Files folder."""
-    UNI = Path(UNI)
-    out = [UNI / FILES] if (UNI / FILES).is_dir() else []
-    if UNI.is_dir():
-        for d in sorted(UNI.iterdir()):
-            if d.is_dir() and not d.name.startswith(".") and (d / FILES).is_dir():
-                out.append(d / FILES)
-    return out
-
-
-def module_of(path, UNI):
-    """The module folder a file belongs to, or None for the inbox."""
-    parent = Path(path).parent
-    return parent.parent if parent.name == FILES and parent.parent != Path(UNI) else None
+def files_dirs(VAULT):
+    """The one watched folder: Files at the vault root."""
+    d = layout.files_dir(VAULT)
+    return [d] if d.is_dir() else []
 
 
 def pages_of(path):
@@ -137,14 +127,6 @@ def clean(pages):
     return out
 
 
-def timetable_link(module_dir):
-    if not module_dir:
-        return ""
-    for p in sorted(Path(module_dir).glob("Timetable*.md")):
-        return f"[[{p.stem}]]"
-    return ""
-
-
 def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
     """Create the note and the transcript for one document. Returns the key,
     or None when the document had no text."""
@@ -152,7 +134,6 @@ def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
     key = key_for(path)
     transcript = layout.auto_dir(NOTES, "transcripts") / f"{key}.md"
     mynote = layout.raw_dir(NOTES) / f"{key}.md"
-    module = module_of(path, UNI)
 
     pages = clean(pages_of(path))
     if not pages:
@@ -167,8 +148,6 @@ def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
             f.write("type: document-transcript\n")
             f.write(f'source: "{path.name}"\n')
             f.write(f'source_path: "{rel}"\n')
-            if module:
-                f.write(f'module_folder: "{os.path.relpath(module, VAULT).replace(os.sep, "/")}"\n')
             f.write(f"source_bytes: {path.stat().st_size}\n")
             f.write(f"pages: {len(pages)}\n")
             f.write(f"generated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n")
@@ -180,13 +159,8 @@ def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
         os.replace(tmp, transcript)
 
     if not mynote.exists():
-        area = subject = ""
-        if module:
-            relm = os.path.relpath(module, VAULT).split(os.sep)
-            area, subject = (relm[0] if len(relm) > 1 else ""), relm[-1]
         mynote.write_text(rawnote.render(
             key, start=f"{datetime.datetime.now():%Y-%m-%d %H:%M}",
-            schedule=timetable_link(module), area=area, subject=subject,
             kind="Document",
             transcript_link=layout.link(tr_name, "transcripts", key),
             source_link=rawnote.vault_link(path, VAULT), source=path.name), encoding="utf-8")
@@ -194,11 +168,11 @@ def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
     return key
 
 
-def pending(NOTES, UNI, min_age=0):
-    """Documents with no transcript yet, older than min_age seconds."""
+def pending(NOTES, VAULT, min_age=0):
+    """Documents in Files with no transcript yet, older than min_age seconds."""
     now = time.time()
     out = []
-    for d in files_dirs(UNI):
+    for d in files_dirs(VAULT):
         for p in sorted(d.iterdir()):
             if not p.is_file() or p.suffix.lower() not in DOC_EXT or p.name.startswith((".", "_", "~$")):
                 continue
@@ -221,13 +195,16 @@ def main():
     NOTES = VAULT / tr_name
     UNI = VAULT / cfg.get("UNIVERSITY_DIR", "University")
     layout.ensure(NOTES)
-    files = [Path(a).expanduser().resolve() for a in sys.argv[2:]]
-    for f in files:
-        if not f.is_relative_to(VAULT):
-            inbox = UNI / FILES
-            inbox.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(f, inbox / f.name)
-    for f in (files and [((UNI / FILES / f.name) if not f.is_relative_to(VAULT) else f) for f in files]) or pending(NOTES, UNI):
+    inbox = layout.files_dir(VAULT)
+    layout.ensure_files(VAULT)
+    files = []
+    for a in sys.argv[2:]:
+        f = Path(a).expanduser().resolve()
+        if f.parent != inbox:
+            shutil.copy2(f, inbox / f.name)       # brought into the one watched folder
+            f = inbox / f.name
+        files.append(f)
+    for f in files or pending(NOTES, VAULT):
         ingest(f, VAULT, NOTES, UNI, tr_name)
 
 

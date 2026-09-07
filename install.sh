@@ -202,7 +202,7 @@ python3 - "$ROOT" "$vault" "$tr_dir" "$uni_dir" <<'LAYOUT'
 import sys; sys.path.insert(0, sys.argv[1] + "/shared"); import layout
 notes = sys.argv[2] + "/" + sys.argv[3]; uni = sys.argv[2] + "/" + sys.argv[4]
 layout.migrate(notes, sys.argv[2], log=lambda m: print("  " + m), uni=uni)
-layout.ensure(notes); layout.ensure_university(uni); layout.write_about(notes)
+layout.ensure(notes); layout.ensure_files(sys.argv[2]); layout.write_about(notes)
 LAYOUT
 "$ROOT/lib/example-module.sh" "$vault/$uni_dir"
 
@@ -414,8 +414,9 @@ if [ "$want_capture" = 1 ] && [ -n "$live" ]; then
   say "    $tr_dir/auto/live/    the live transcript, rewritten as it goes"
   say "    $tr_dir/my notes/    yours: write here, fill in the table to file it"
   say "  Everything under $tr_dir/auto/ is the pipeline's; each folder has an _about.md."
-  say "  A PDF, DOCX, PPTX or XLSX in a module's Files/ folder gets a note of"
-  say "  yours within a minute; its finished note lands in the module's Documents/."
+  say "  A PDF, DOCX, PPTX or XLSX dropped into Files/ at the vault root gets a"
+  say "  note of yours within a minute; fill its table and the finished note lands"
+  say "  in the module's Documents/. Files kept anywhere else are not processed."
   say
   say "  Live model: $(basename "$live") on $backend, updating every ${chunk_secs:-12}s."
 elif [ "$want_capture" = 1 ]; then

@@ -90,7 +90,7 @@ def main():
         # repaired so nothing is summarised twice.
         layout.migrate(NOTES, VAULT, log=log, uni=UNI)
         layout.ensure(NOTES)
-        layout.ensure_university(UNI)
+        layout.ensure_files(VAULT)
         layout.fix_markers(NOTES, STATE)
         layout.write_about(NOTES, KEEP_AUDIO_DAYS)
 
@@ -177,11 +177,11 @@ def expected_bytes(NOTES, audio):
 
 
 def stage_documents(NOTES, VAULT, UNI, cfg):
-    """A document in a Files folder gets its note and its cleaned text.
+    """A document in Files at the vault root gets its note and its cleaned text.
     Cheap, no GPU, so it never blocks the other stages. The laptop's watcher
     is given a grace period first, and a file still arriving through sync is
     left until its size holds still for a tick."""
-    for doc in document.pending(NOTES, UNI, min_age=DOC_GRACE_SECS):
+    for doc in document.pending(NOTES, VAULT, min_age=DOC_GRACE_SECS):
         size_file = STATE / f"{doc.name}.dsize"
         size_now = doc.stat().st_size
         prev = size_file.read_text().strip() if size_file.exists() else ""
