@@ -225,7 +225,9 @@ def register_periodic(name, command, minutes=1):
 
     unit = Path.home() / ".config/systemd/user"
     unit.mkdir(parents=True, exist_ok=True)
-    exe = " ".join(command)
+    # each argument quoted: a vault path with a space in it was split by
+    # systemd into two arguments, and the watcher tried to ingest "University"
+    exe = " ".join('"' + c.replace("\\", "\\\\").replace('"', '\\"') + '"' for c in command)
     (unit / f"{name}.service").write_text(
         f"[Unit]\nDescription={name}\n\n[Service]\nType=oneshot\nExecStart={exe}\n")
     (unit / f"{name}.timer").write_text(
