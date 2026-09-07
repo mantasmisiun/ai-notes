@@ -60,7 +60,7 @@ say "Detected:"
 say "  CPU     $CPU_NAME, $CPU_THREADS threads"
 say "  GPU     ${GPU_NAME:-none}"
 kind="integrated"; [ "$GPU_DISCRETE" = 1 ] && kind="discrete"
-if   [ "$HAS_CUDA"   = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, $kind, CUDA available"
+if   [ "$HAS_CUDA"   = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, $kind, CUDA available, ${VRAM_FREE_MIB} MiB free now"
 elif [ "$HAS_VULKAN" = 1 ]; then say "  VRAM    ${VRAM_MIB} MiB, $kind, Vulkan available"
 else say "  GPU acceleration unavailable, CPU only"; fi
 say
@@ -285,7 +285,7 @@ if [ "$want_capture" = 1 ]; then
       say "--- measuring ---"
       out="$(HAS_CUDA=$HAS_CUDA MIN_LIVE_FACTOR=$MIN_LIVE_FACTOR \
             LECTURE_FIXED_MODEL="$FIXED" \
-            GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB \
+            GPU_DISCRETE=$GPU_DISCRETE VRAM_MIB=$VRAM_MIB VRAM_FREE_MIB=$VRAM_FREE_MIB \
             "$ROOT/capture/venv/bin/python" "$ROOT/lib/benchmark.py" \
             "$bench_lang" "$ROOT/samples" "$ROOT/.bench" "$wcpp" | tee /dev/tty)"
       result="$(printf '%s\n' "$out" | sed -n 's/^RESULT\t//p')"

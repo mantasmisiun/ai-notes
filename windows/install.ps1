@@ -228,7 +228,7 @@ Say "  Trying the largest model first and falling back only if it cannot keep"
 Say "  up. Models are downloaded as they are needed, so this takes a while."
 Say ""
 
-# gpu_probe reports vendor, name, FREE VRAM and whether the card is discrete
+# gpu_probe reports vendor, name, total VRAM, whether the card is discrete, and free VRAM
 $probe = & "$Root\capture\venv\Scripts\python.exe" "$Root\shared\gpu_probe.py"
 $parts = $probe -split "`t"
 $vram = 0; $discrete = 0; $cuda = 0
@@ -241,6 +241,7 @@ if ($parts.Count -ge 4) {
 $env:HAS_CUDA = "$cuda"
 $env:GPU_DISCRETE = "$discrete"
 $env:VRAM_MIB = "$vram"
+$env:VRAM_FREE_MIB = if ($parts.Count -ge 5) { $parts[4] } else { "$vram" }
 $env:MIN_LIVE_FACTOR = "1.2"
 $env:LECTURE_FIXED_MODEL = "$ltModel"
 

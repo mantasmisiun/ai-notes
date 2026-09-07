@@ -45,10 +45,10 @@ def probe_env():
     """The benchmark wants the GPU facts as environment variables."""
     r = subprocess.run([sys.executable, str(ROOT / "shared" / "gpu_probe.py")],
                        capture_output=True, text=True)
-    parts = (r.stdout.strip().split("\t") + ["none", "", "0", "0"])[:4]
-    vendor, _, vram, discrete = parts
+    parts = (r.stdout.strip().split("\t") + ["none", "", "0", "0", "0"])[:5]
+    vendor, _, vram, discrete, free = parts
     return {"HAS_CUDA": "1" if vendor == "nvidia" else "0",
-            "GPU_DISCRETE": discrete, "VRAM_MIB": vram}
+            "GPU_DISCRETE": discrete, "VRAM_MIB": vram, "VRAM_FREE_MIB": free or vram}
 
 
 def benchmark(model, cfg):

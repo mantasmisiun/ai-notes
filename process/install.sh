@@ -30,12 +30,28 @@ python3 -m venv "$DIR/venv"
 asr="${LECTURE_ASR_MODEL:-large-v3}"
 prec="${LECTURE_ASR_COMPUTE:-float16}"
 echo "fetching the accurate model: $asr ($prec)"
-"$DIR/venv/bin/python" - "$asr" "$prec" <<'PY'
-import sys
-from faster_whisper import WhisperModel
-WhisperModel(sys.argv[1], device="cuda", compute_type=sys.argv[2])
-print(f"{sys.argv[1]} ready on GPU")
+# Download only. Loading the model onto the GPU here failed with CUDA out of
+# memory whenever Ollama still held a note model resident, and the traceback
+# ended the installer. Nothing about fetching needs the GPU.
+if ! "$DIR/venv/bin/python" - "$asr" <<'PY'
+import os, sys
+name = sys.argv[1]
+try:
+    if os.path.isdir(name):
+        print(f"{name} is a local model directory, nothing to fetch")
+    else:
+        from faster_whisper import download_model
+        path = download_model(name)
+        print(f"{name} ready ({path})")
+except Exception as e:
+    print(f"could not fetch {name}: {type(e).__name__}: {str(e).strip().splitlines()[-1] if str(e).strip() else ''}")
+    sys.exit(1)
 PY
+then
+  echo "The accurate model could not be downloaded. Check the network and re-run the installer" >&2
+  echo "with 'Change models only'; nothing else needs redoing." >&2
+  exit 1
+fi
 
 # Never inherit OLLAMA_HOST. It is commonly set in a shell profile to point at
 # another machine, and the pipeline must talk to the local daemon it just

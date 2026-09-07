@@ -82,7 +82,8 @@ def pacing(factor):
             return min(i_max, max(5, int(round(cost / 0.8)))), window
     return None
 DISCRETE     = os.environ.get("GPU_DISCRETE", "0") == "1"
-VRAM_MIB     = int(os.environ.get("VRAM_MIB", "0") or 0)
+VRAM_MIB     = int(os.environ.get("VRAM_MIB", "0") or 0)          # the card's size
+VRAM_FREE    = int(os.environ.get("VRAM_FREE_MIB", "0") or VRAM_MIB) # free right now
 
 suffix = ".en" if lang == "en" else ""
 os.makedirs(work, exist_ok=True)
@@ -231,11 +232,11 @@ else:
     # display runs on an integrated GPU leaves the whole discrete card free,
     # and a total-size threshold would have excluded a card that fits.
     ladder = []
-    if DISCRETE and VRAM_MIB >= 3800:
+    if DISCRETE and VRAM_FREE >= 3800:
         ladder.append("large-v3")
     else:
         print(f"  large-v3 skipped: needs a discrete GPU with about 4 GB free, "
-              f"this has {VRAM_MIB} MiB\n")
+              f"this has {VRAM_FREE} MiB free now\n")
     ladder += [f"medium{suffix}", f"small{suffix}"]
 
 disabled = {d for d in os.environ.get("LECTURE_DISABLED_MODELS", "").split(",") if d}

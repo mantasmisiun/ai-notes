@@ -19,8 +19,9 @@ CPU_THREADS="$(nproc 2>/dev/null || echo 1)"
 # One probe covers all three vendors. nvidia-smi is authoritative where it
 # exists; otherwise vulkaninfo is parsed, which is the only way to learn the
 # VRAM of an AMD or Intel card and whether it is discrete or integrated.
-IFS=$'\t' read -r GPU_VENDOR GPU_NAME VRAM_MIB GPU_DISCRETE < <(
+IFS=$'\t' read -r GPU_VENDOR GPU_NAME VRAM_MIB GPU_DISCRETE VRAM_FREE_MIB < <(
   python3 "$(dirname "${BASH_SOURCE[0]}")/../shared/gpu_probe.py" 2>/dev/null)
+VRAM_FREE_MIB="${VRAM_FREE_MIB:-$VRAM_MIB}"
 GPU_VENDOR="${GPU_VENDOR:-none}"; GPU_NAME="${GPU_NAME:-}"
 VRAM_MIB="${VRAM_MIB:-0}"; GPU_DISCRETE="${GPU_DISCRETE:-0}"
 HAS_CUDA=0; [ "$GPU_VENDOR" = "nvidia" ] && HAS_CUDA=1

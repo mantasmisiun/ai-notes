@@ -6,7 +6,12 @@ covers AMD and Intel including discrete cards. Its --summary gives device type
 but not memory, and the full output's largest device-local heap can belong to
 the CPU rasteriser, so device sections have to be walked properly.
 
-Prints one line:  VENDOR<TAB>NAME<TAB>VRAM_MIB<TAB>DISCRETE(1|0)
+Prints one line:  VENDOR<TAB>NAME<TAB>VRAM_MIB<TAB>DISCRETE(1|0)<TAB>FREE_MIB
+
+VRAM_MIB is the card's total, for sizing models that will run later; FREE_MIB
+is what is free right now, for deciding whether a benchmark can run at this
+moment. The installer once used free for sizing and, with an 8 GB note model
+resident in Ollama, sized a 10 GB card as a 142 MiB one.
 """
 import re
 import subprocess
@@ -25,10 +30,7 @@ def from_nvidia_smi():
         best = None
         for line in r.stdout.strip().splitlines():
             name, total, free = [x.strip() for x in line.split(",")]
-            # Free matters more than total. On a laptop where an integrated GPU
-            # drives the display, the whole discrete card is available, and a
-            # threshold on total size would rule out a card that fits the model.
-            cand = ("nvidia", name, int(free), 1)
+            cand = ("nvidia", name, int(total), 1, int(free))
             if best is None or cand[2] > best[2]:
                 best = cand
         return best
@@ -68,14 +70,14 @@ def from_vulkaninfo():
         vendor = ("amd" if re.search(r"amd|radeon|radv", name, re.I) else
                   "intel" if re.search(r"intel|arc", name, re.I) else "other")
         discrete = 1 if kind == "DISCRETE_GPU" else 0
-        cand = (vendor, name, vram, discrete)
+        cand = (vendor, name, vram, discrete, vram)     # vulkaninfo has no free figure
         if best is None or (discrete, vram) > (best[3], best[2]):
             best = cand
     return best
 
 
 def main():
-    g = from_nvidia_smi() or from_vulkaninfo() or ("none", "", 0, 0)
+    g = from_nvidia_smi() or from_vulkaninfo() or ("none", "", 0, 0, 0)
     print("\t".join(str(x) for x in g))
 
 
