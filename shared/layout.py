@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 AUTO = "auto"
-GENERATED = ("live", "transcripts", "audio", "unfiled")
+GENERATED = ("live", "transcripts", "audio", "unfiled", "documents")
 RAW = "my notes"
 RAW_OLD = ("raw notes", "your notes")   # earlier names, migrated on sight
 ABOUT = "_about.md"
@@ -156,6 +156,7 @@ Anything you type here is overwritten or deleted. Your own notes belong in
 | transcripts | the accurate transcript, generated once from the audio | kept |
 | audio | the recording | deleted {keep_days} days after its note is written |
 | unfiled | finished notes that do not know their Area and Subject yet | filed once you fill the table in your note |
+| documents | PDF, DOCX, PPTX or XLSX you drop in to be read like a recording | kept |
 """,
         auto_dir(notes, "live"): """# Live transcripts
 
@@ -175,6 +176,15 @@ exists.
 Kept for {keep_days} days after the finished note is written, then deleted.
 The note and the transcript stay; only the embedded player in them stops
 working. Copy a recording elsewhere if you want to keep it.
+""",
+        auto_dir(notes, "documents"): """# Documents
+
+Drop a PDF, DOCX, PPTX or XLSX here and it goes through the same funnel as a
+recording. Within a minute of reaching the processing machine a note appears
+in `my notes` for you to write in while you read; the document's text, cleaned
+of headers, footers and page numbers, appears in `transcripts` with page
+markers; and a summary follows, written from your note and that text. The
+file itself stays here.
 """,
         auto_dir(notes, "unfiled"): """# Unfiled notes
 

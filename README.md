@@ -123,6 +123,8 @@ Transcriptions/
     transcripts/  accurate, kept; every paragraph has a block id the notes link to
     audio/        Opus, deleted 7 days after the note is written
     unfiled/      finished notes that do not know their Area and Subject yet
+    documents/    drop a PDF, DOCX, PPTX or XLSX here: it gets a note of yours to
+                  write in, a cleaned page-marked transcript, and a summary
 
 University/<MODULE>/
   Timetable <MODULE>.md      yours, read only

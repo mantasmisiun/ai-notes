@@ -69,8 +69,7 @@ def wants_followups(text, lang="en"):
 PROMPTS = {
     "en": {
         "section": """You are given part of a transcript of {context}, in {src}.
-Time markers such as [0:03:08] show where each paragraph of the transcript
-starts.
+{source_hint}
 
 Turn this part into study notes a reader can follow without the recording.
 Work topic by topic: one block per distinct subject, however briefly it was
@@ -91,9 +90,8 @@ Rules for the blocks:
   "Introduction", "Discussion" or "Overview". If the speaker returns to a
   topic that already has a block, use exactly the same title again: blocks
   with the same title are joined, each part keeping its own time marker.
-- The second line is the time marker where the topic starts, copied exactly
-  from the transcript. Never invent one; use the nearest marker before the
-  topic.
+- The second line is the marker where the topic starts, copied exactly from
+  the transcript. Never invent one; use the nearest marker before the topic.
 - Two to six key points, each a short phrase or one sentence. Write the content
   itself, not a narration of it: "Nasson pled guilty on 3 June 2022", never
   "The speaker says that Nasson pled guilty". Name who said something only when
@@ -112,12 +110,7 @@ Do not compress for brevity: every topic that was covered gets a block, and
 length follows the material. Output only the blocks, no heading above them,
 no introduction, no conclusion.
 
-The text is machine-transcribed, so some words are wrong and there may be no
-punctuation. Read through that and write about the subject matter. **Never
-comment on the transcription, list misrecognised words, or discuss the quality
-of the text.** A word that is not an English word is a recognition error:
-leave it out, never explain it or guess a meaning for it. If a passage is
-beyond understanding, skip it silently.
+{source_caveat}
 
 {names}{prior}TRANSCRIPT PART:
 {chunk}""",
@@ -126,6 +119,22 @@ beyond understanding, skip it silently.
 {prior}
 
 """,
+
+        "hint_audio": """Time markers such as [0:03:08] show where each paragraph of the transcript
+starts.""",
+        "hint_document": """Page markers such as [p3] show where each page of the document starts. A
+"topic" is a section or an argument of the document, and its marker is the
+page it starts on.""",
+        "caveat_audio": """The text is machine-transcribed, so some words are wrong and there may be no
+punctuation. Read through that and write about the subject matter. **Never
+comment on the transcription, list misrecognised words, or discuss the quality
+of the text.** A word that is not an English word is a recognition error:
+leave it out, never explain it or guess a meaning for it. If a passage is
+beyond understanding, skip it silently.""",
+        "caveat_document": """The text was extracted from a document, so a heading, a caption, a table or
+a reference list may have lost its layout. Read through that and write about
+the content. **Never comment on the extraction or the formatting.** Skip
+reference lists, page furniture and anything that is not content.""",
 
         "names": """NAMES ALREADY IN USE, keep these spellings exactly:
 {names}
@@ -192,9 +201,8 @@ subject matter. No quotes, no punctuation at the end, no prefix such as
     },
 
     "lt": {
-        "section": """Pateikta {context} transkripcijos dalis {src_lt} kalba. Laiko
-žymos, tokios kaip [0:03:08], rodo, kur prasideda kiekviena transkripcijos
-pastraipa.
+        "section": """Pateikta {context} transkripcijos dalis {src_lt} kalba.
+{source_hint}
 
 Paversk šią dalį konspektu, kurį galima sekti be įrašo. Dirbk tema po temos:
 po vieną bloką kiekvienai atskirai temai, kad ir kaip trumpai ji buvo
@@ -215,9 +223,9 @@ Blokų taisyklės:
   Niekada „Įžanga“, „Aptarimas“ ar „Apžvalga“. Jei kalbėtojas grįžta prie temos, kuri
   jau turi bloką, naudok tiksliai tą patį pavadinimą: vienodai pavadinti blokai
   sujungiami, kiekviena dalis išlaiko savo laiko žymą.
-- Antra eilutė yra laiko žyma, nuo kurios tema prasideda, nukopijuota
-  tiksliai iš transkripcijos. Niekada nekurk jos pats; naudok artimiausią
-  prieš temą esančią.
+- Antra eilutė yra žyma, nuo kurios tema prasideda, nukopijuota tiksliai iš
+  transkripcijos. Niekada nekurk jos pats; naudok artimiausią prieš temą
+  esančią.
 - Nuo dviejų iki šešių punktų, kiekvienas trumpa frazė arba vienas sakinys.
   Rašyk pačią mintį, o ne jos atpasakojimą: „Nasson prisipažino kaltu 2022 m.
   birželio 3 d.“, niekada „Kalbėtojas sako, kad Nasson prisipažino“. Nurodyk,
@@ -235,12 +243,7 @@ Blokų taisyklės:
 Netrumpink dėl trumpumo: kiekviena aptarta tema gauna bloką, o ilgis atitinka
 medžiagą. Išvesk tik blokus, be antraštės virš jų, be įžangos, be išvadų.
 
-Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
-skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada
-nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir
-nekomentuok teksto kokybės.** Žodis, kurio lietuvių kalboje nėra, yra
-atpažinimo klaida: praleisk jį, niekada jo neaiškink ir nespėliok reikšmės.
-Nesuprantamas vietas tiesiog praleisk.
+{source_caveat}
 
 {names}{prior}TRANSKRIPCIJOS DALIS:
 {chunk}""",
@@ -249,6 +252,23 @@ Nesuprantamas vietas tiesiog praleisk.
 {prior}
 
 """,
+
+        "hint_audio": """Laiko žymos, tokios kaip [0:03:08], rodo, kur prasideda kiekviena
+transkripcijos pastraipa.""",
+        "hint_document": """Puslapių žymos, tokios kaip [p3], rodo, kur prasideda kiekvienas dokumento
+puslapis. „Tema“ čia yra dokumento skyrius ar argumentas, o jos žyma yra
+puslapis, kuriame ji prasideda.""",
+        "caveat_audio": """Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
+skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada
+nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir
+nekomentuok teksto kokybės.** Žodis, kurio lietuvių kalboje nėra, yra
+atpažinimo klaida: praleisk jį, niekada jo neaiškink ir nespėliok reikšmės.
+Nesuprantamas vietas tiesiog praleisk.""",
+        "caveat_document": """Tekstas ištrauktas iš dokumento, todėl antraštė, paveikslo aprašas, lentelė
+ar literatūros sąrašas galėjo prarasti išdėstymą. Nekreipk į tai dėmesio ir
+rašyk apie turinį. **Niekada nekomentuok ištraukimo ar formatavimo.**
+Praleisk literatūros sąrašus, puslapių apipavidalinimą ir viską, kas nėra
+turinys.""",
 
         "names": """JAU NAUDOJAMI VARDAI, išlaikyk tiksliai šias rašybas:
 {names}
@@ -338,14 +358,24 @@ def describe(area="", subject="", kind="", lang="en"):
     return "a recorded session"
 
 
-def get(note_lang, src_lang, context="a recorded session"):
-    """Prompt set for the note language, with the transcript language filled in.
-    Falls back to English for any language without a translated set."""
+def describe_document(name, subject="", lang="en"):
+    if lang == "lt":
+        return f"dokumento „{name}“" + (f" ({subject})" if subject else "")
+    return f"the document {name}" + (f", on {subject}" if subject else "")
+
+
+def get(note_lang, src_lang, context="a recorded session", document=False):
+    """Prompt set for the note language, with the transcript language, the
+    context, and the source kind (recording or document) filled in. Falls back
+    to English for any language without a translated set."""
     p = PROMPTS.get(note_lang, PROMPTS["en"])
+    kind = "document" if document else "audio"
     return {
         k: v.replace("{out_lang}", LANG_NAMES.get(note_lang, note_lang))
             .replace("{context}", context)
             .replace("{src_lt}", LANG_NAMES_LT.get(src_lang, src_lang))
             .replace("{src}", LANG_NAMES.get(src_lang, src_lang))
+            .replace("{source_hint}", p[f"hint_{kind}"])
+            .replace("{source_caveat}", p[f"caveat_{kind}"])
         for k, v in p.items()
     }

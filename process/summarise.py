@@ -111,17 +111,24 @@ def unfence(t):
     return t.strip()
 
 
-TIME_RE = re.compile(r"\*\*\[(\d{1,2}:\d\d:\d\d)\]\*\*")
-# a time the model cites, allowing the bold or code it may wrap it in
-CITED_RE = re.compile(r"`?\*{0,2}\[(\d{1,2}:\d\d:\d\d)\]\*{0,2}`?")
+# A marker is a time in a recording, [0:03:08], or a page in a document, [p3].
+# Everything below treats the two alike: an id to link to, an order to sort by.
+LABEL = r"(?:\d{1,2}:\d\d:\d\d|p\d+)"
+TIME_RE = re.compile(r"\*\*\[(" + LABEL + r")\]\*\*")
+# a marker the model cites, allowing the bold or code it may wrap it in
+CITED_RE = re.compile(r"`?\*{0,2}\[(" + LABEL + r")\]\*{0,2}`?")
+CITED_PLAIN = re.compile(r"\[(" + LABEL + r")\]")
 
 
 def block_id(label):
-    """[0:03:08] -> t0-03-08, an Obsidian block id (letters, digits, dashes)."""
-    return "t" + label.replace(":", "-")
+    """[0:03:08] -> t0-03-08, [p3] -> p3: an Obsidian block id."""
+    return label if label.startswith("p") else "t" + label.replace(":", "-")
 
 
 def secs(label):
+    """Seconds for a time, the page number for a page: an order either way."""
+    if label.startswith("p"):
+        return int(label[1:])
     h, m_, s_ = (int(x) for x in label.split(":"))
     return h * 3600 + m_ * 60 + s_
 
@@ -135,7 +142,7 @@ def ensure_block_ids(path):
     paras, changed = [], False
     for para in re.split(r"\n\s*\n", body.strip()):
         m_ = TIME_RE.match(para.strip())
-        if m_ and not re.search(r"\^t[\d-]+\s*$", para):
+        if m_ and not re.search(r"\^(?:t[\d-]+|p\d+)\s*$", para):
             para = para.rstrip() + f" ^{block_id(m_.group(1))}"
             changed = True
         paras.append(para)
@@ -153,7 +160,7 @@ def paragraphs(path):
     out = []
     for para in re.split(r"\n\s*\n", t.strip()):
         m_ = TIME_RE.match(para.strip())
-        body = re.sub(r"\s\^t[\d-]+\s*$", "", TIME_RE.sub("", para))
+        body = re.sub(r"\s\^(?:t[\d-]+|p\d+)\s*$", "", TIME_RE.sub("", para))
         body = re.sub(r"\s+", " ", body).strip()
         if body:
             out.append((m_.group(1) if m_ else None, body))
@@ -287,8 +294,8 @@ def merge_blocks(detail):
     # model wrote a 0:02:08 topic after a 0:04:10 one; a block with no time
     # of its own stays after the block before it.
     def first_time(body):
-        m = re.search(r"\|(\d{1,2}):(\d\d):(\d\d)\]\]", body)
-        return (int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))) if m else None
+        m = re.search(r"\|(" + LABEL + r")\]\]", body)
+        return secs(m.group(1)) if m else None
     keyed, last = [], -1
     for t, b in blocks:
         ft = first_time(b)
@@ -336,7 +343,7 @@ def collect_notes(stamp, lectures_dir):
             if f'stamp: "{stamp}"' not in head:
                 continue
             # never feed the pipeline its own output back to itself
-            if re.search(r"^type: lecture-(note|index)\s*$", head, re.M):
+            if re.search(r"^type: (?:lecture-(?:note|index)|document-note)\s*$", head, re.M):
                 continue
             found.append(own_notes_body(path))
 
@@ -406,9 +413,18 @@ if subject_dir:
     area    = area or (rel[0] if len(rel) > 1 else "")
     subject = subject or rel[-1]
 
-context = prompts.describe(area, subject, kind, NOTELANG)
+# A document's transcript says so in its frontmatter; the prompts then talk
+# about pages rather than time, and the note is typed and described as one.
+_head = open(transcript, encoding="utf-8").read(600)
+IS_DOCUMENT = bool(re.search(r"^type: document-transcript", _head, re.M))
+_src = re.search(r'^source: "(.*)"', _head, re.M)
+SOURCE_NAME = _src.group(1) if _src else ""
+if IS_DOCUMENT:
+    context = prompts.describe_document(SOURCE_NAME, subject, NOTELANG)
+else:
+    context = prompts.describe(area, subject, kind, NOTELANG)
 print(f"  treating this as {context}", flush=True)
-P = prompts.get(NOTELANG, SRCLANG, context)
+P = prompts.get(NOTELANG, SRCLANG, context, document=IS_DOCUMENT)
 
 H = prompts.HEADINGS.get(NOTELANG, prompts.HEADINGS["en"])
 rel_transcript = os.path.relpath(transcript, VAULT)[:-3].replace(os.sep, "/")        # drop .md
@@ -428,6 +444,8 @@ notes_intro = P["notes_intro"].format(notes=own) if own else ""
 # passages that share the most words with what it is working on, within a
 # budget, so a sixty-slide deck still fits beside a chunk of transcript.
 mat_docs, mat_msgs = materials.collect(own, VAULT, near=os.path.dirname(raw_path))
+# the document being summarised is the transcript already, not material
+mat_docs = [d for d in mat_docs if not (IS_DOCUMENT and d["name"] == SOURCE_NAME)]
 for msg in mat_msgs:
     print("  " + msg, flush=True)
 
@@ -489,7 +507,7 @@ for (start, end, c), notes in zip(parts, summaries):
     # snap only to markers inside this chunk: a time the model invents then
     # lands somewhere in the passage it was writing about, not at the far end
     # of the recording
-    convert = linker(re.findall(r"\[(\d{1,2}:\d\d:\d\d)\]", c), rel_transcript)
+    convert = linker(CITED_PLAIN.findall(c), rel_transcript)
     detail.append(convert(with_time_lines(notes.strip(), start)))
 note = top.rstrip() + "\n\n" + merge_blocks("\n\n".join(detail)).rstrip()
 if open_q:
@@ -543,7 +561,9 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
     f.write(f'stamp: "{stamp}"\n')
     f.write(f"date: {when:%Y-%m-%d}\ntime: {when:%H:%M}\n")
-    f.write("type: lecture-note\n")
+    f.write("type: document-note\n" if IS_DOCUMENT else "type: lecture-note\n")
+    if IS_DOCUMENT:
+        f.write(f'source: "{SOURCE_NAME}"\n')
     # written once by the pipeline, yours afterwards: nothing rewrites it
     f.write("generated: once\n")
     if area:
@@ -558,6 +578,8 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write(note.rstrip() + "\n\n---\n\n")
     f.write(f"My notes: [[{raw_link}]]\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
+    if IS_DOCUMENT:
+        f.write(f"Source: [[{layout.link(os.path.basename(NOTES), 'documents', SOURCE_NAME)}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")
 

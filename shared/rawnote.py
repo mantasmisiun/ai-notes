@@ -29,7 +29,8 @@ GENERATED_MARK = "generated: lecture-pipeline"
 
 
 def render(stamp, start, area="", subject="", kind="", end="",
-           schedule="", live_link="", transcript_link="", summary_link=""):
+           schedule="", live_link="", transcript_link="", summary_link="",
+           source_link="", source=""):
     """Three parts and nothing else: one line saying what to fill in, the
     table, the links the pipeline fills, then the heading you write under."""
     rows = {"Schedule": schedule, "Area": area, "Subject": subject,
@@ -40,16 +41,18 @@ def render(stamp, start, area="", subject="", kind="", end="",
     def link(target):
         return f"[[{target}]]" if target else ""
 
+    first = f"Source: {link(source_link)}" if source_link else f"Live: {link(live_link)}"
     return (
         "---\n"
         f'stamp: "{stamp}"\n'
         "type: raw-note\n"
+        + (f'source: "{source}"\n' if source else "") +
         "---\n\n"
         f"# {stamp}\n\n"
         "**Link a Schedule, or fill in Area, Subject and Type. One or the other,**\n"
         "**or this session stays in unfiled.**\n\n"
         f"{table}\n"
-        f"Live: {link(live_link)}\n"
+        f"{first}\n"
         f"Transcript: {link(transcript_link)}\n"
         f"Summary: {link(summary_link)}\n\n"
         "---\n\n"

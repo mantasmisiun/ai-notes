@@ -20,6 +20,7 @@ sys.path.insert(0, str(HERE))
 
 import platform_support as ps
 import layout
+import document
 
 # Room for whisper large-v3 in float16: about 3 GB of weights plus working
 # memory. Only transcription is gated on this; see main().
@@ -120,6 +121,7 @@ def main():
         # the next summary needs; gating the whole run on free memory meant
         # that a deleted note was never rewritten while the model stayed
         # resident, and every minute logged "defer" instead.
+        stage_documents(NOTES, VAULT, cfg)
         if 0 <= free < MIN_FREE_MIB:
             if needs_transcription(NOTES):
                 log(f"defer transcription: only {free} MiB free")
@@ -163,6 +165,22 @@ def expected_bytes(NOTES, audio):
         except OSError:
             pass
     return None
+
+
+def stage_documents(NOTES, VAULT, cfg):
+    """A document dropped into auto/documents gets its note and its cleaned
+    text. Cheap, no GPU, so it never blocks the other stages. A file still
+    arriving through sync is left until its size holds still for a tick."""
+    for doc in document.pending(NOTES):
+        size_file = STATE / f"{doc.name}.dsize"
+        size_now = doc.stat().st_size
+        prev = size_file.read_text().strip() if size_file.exists() else ""
+        if str(size_now) != prev:
+            size_file.write_text(str(size_now))
+            log(f"waiting: {doc.name} is still arriving ({size_now} bytes)")
+            continue
+        size_file.unlink(missing_ok=True)
+        document.ingest(doc, VAULT, NOTES, cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"), log=log)
 
 
 def stage_transcribe(NOTES, env, free):
