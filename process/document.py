@@ -1,24 +1,32 @@
 #!/usr/bin/env python3
-"""A document dropped into Transcriptions/auto/documents goes through the same
-funnel as a recording: a note of yours to write in while you read, a
-"transcript" that is the document's text cleaned of everything that is not
-content, then a summary written from both.
+"""A document in a module's Files folder goes through the same funnel as a
+recording: a note of yours to write in while you read, a "transcript" that is
+the document's text cleaned of everything that is not content, then a
+summary written from both, filed in the module's Documents folder.
 
-The transcript carries page markers, **[p3]**, and block ids, ^p3, where a
-recording's carries time markers, so the finished note links to the page a
-point came from exactly as it links to a moment of audio.
+Everything is keyed by the file's name, not a time: my notes/<name>.md,
+auto/transcripts/<name>.md, <module>/Documents/<name>.md. Rename the file
+and it is a new document.
 
-Runs inside the pipeline on the processing machine, and by hand anywhere:
+The transcript marks every paragraph, **[p3.2]** for page 3, paragraph 2,
+with a block id ^p3-2, so the finished note links to the exact paragraph a
+point came from, as it links to a moment of audio.
+
+Runs on the laptop through a one-minute timer, so the note appears while
+you read, and inside the pipeline on the processing machine, which waits two
+minutes so the laptop gets first go. By hand:
 
     python3 process/document.py <vault> [file ...]
 
-With no files it ingests everything in auto/documents that has no note yet."""
+A file given from outside the vault is copied into University/Files, the
+inbox for documents that belong to no module yet."""
 import datetime
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -28,13 +36,37 @@ import layout
 import materials
 import rawnote
 
-DOC_EXT = (".pdf", ".docx", ".pptx", ".xlsx", ".md")
+DOC_EXT = (".pdf", ".docx", ".pptx", ".xlsx")
+FILES = "Files"
 PAGE_WORDS = 450          # a pseudo-page for formats that have no pages
 
 
+def key_for(path):
+    """The note name for a file: its stem, minus what a file name cannot hold."""
+    k = re.sub(r"[\\/:*?\"<>|#^\[\]]", " ", Path(path).stem)
+    return re.sub(r"\s+", " ", k).strip(" .")[:100]
+
+
+def files_dirs(UNI):
+    """University/Files, the inbox, and every module's Files folder."""
+    UNI = Path(UNI)
+    out = [UNI / FILES] if (UNI / FILES).is_dir() else []
+    if UNI.is_dir():
+        for d in sorted(UNI.iterdir()):
+            if d.is_dir() and not d.name.startswith(".") and (d / FILES).is_dir():
+                out.append(d / FILES)
+    return out
+
+
+def module_of(path, UNI):
+    """The module folder a file belongs to, or None for the inbox."""
+    parent = Path(path).parent
+    return parent.parent if parent.name == FILES and parent.parent != Path(UNI) else None
+
+
 def pages_of(path):
-    """[(label, text)] per page. PDF pages are real; slides are pages; a
-    DOCX or XLSX is cut into pseudo-pages of about PAGE_WORDS words."""
+    """[(page label, text)] per page. PDF pages are real; slides are pages;
+    a DOCX or XLSX is cut into pseudo-pages of about PAGE_WORDS words."""
     path = Path(path)
     ext = path.suffix.lower()
     if ext == ".pdf":
@@ -49,15 +81,14 @@ def pages_of(path):
                 raw = "\f".join((pg.extract_text() or "") for pg in PdfReader(str(path)).pages)
             except Exception:
                 raw = ""
-        pages = [p for p in raw.split("\f")]
-        return [(f"p{i}", t) for i, t in enumerate(pages, 1) if t.strip()]
+        return [(i, t) for i, t in enumerate(raw.split("\f"), 1) if t.strip()]
     text = materials.extract(path)
     if ext == ".pptx":
         out = []
         for para in re.split(r"\n\s*\n", text):
             m = re.match(r"Slide (\d+): ?(.*)", para, re.S)
             if m:
-                out.append((f"p{m.group(1)}", m.group(2)))
+                out.append((int(m.group(1)), m.group(2)))
         return out
     out, cur, n, i = [], [], 0, 1
     for para in re.split(r"\n\s*\n", text):
@@ -66,17 +97,18 @@ def pages_of(path):
         cur.append(para.strip())
         n += len(para.split())
         if n >= PAGE_WORDS:
-            out.append((f"p{i}", "\n\n".join(cur)))
+            out.append((i, "\n\n".join(cur)))
             cur, n, i = [], 0, i + 1
     if cur:
-        out.append((f"p{i}", "\n\n".join(cur)))
+        out.append((i, "\n\n".join(cur)))
     return out
 
 
 def clean(pages):
-    """Content only. Running headers and footers are lines that recur on
-    three or more pages; page numbers are lines that are only a number;
-    hyphenated line breaks are joined; lines within a paragraph are joined."""
+    """Content only, as [(page number, [paragraphs])]. Running headers and
+    footers are lines that recur on three or more pages; page numbers are
+    lines that are only a number; hyphenated line breaks are joined; the
+    lines of a paragraph are joined."""
     norm = lambda l: re.sub(r"\d+", "#", l.strip().lower())
     seen = {}
     for _, t in pages:
@@ -84,7 +116,7 @@ def clean(pages):
             seen[l] = seen.get(l, 0) + 1
     running = {l for l, c in seen.items() if c >= 3 and len(l.split()) <= 12}
     out = []
-    for label, t in pages:
+    for num, t in pages:
         keep = []
         for l in t.splitlines():
             s = l.strip()
@@ -101,42 +133,26 @@ def clean(pages):
         paras = [re.sub(r"\s+", " ", p).strip() for p in re.split(r"\n\s*\n", text)]
         paras = [p for p in paras if len(p) > 1]
         if paras:
-            out.append((label, "\n\n".join(paras)))
+            out.append((num, paras))
     return out
 
 
-def stamp_for(path, NOTES):
-    """A stamp from the file's modification time, nudged by a minute while it
-    collides with a recording or another document."""
-    t = datetime.datetime.fromtimestamp(Path(path).stat().st_mtime)
-    while True:
-        stamp = f"{t:%Y-%m-%d %H%M}"
-        taken = ((layout.auto_dir(NOTES, "transcripts") / f"{stamp}.md").exists()
-                 or (layout.raw_dir(NOTES) / f"{stamp}.md").exists())
-        if not taken:
-            return stamp
-        t += datetime.timedelta(minutes=1)
+def timetable_link(module_dir):
+    if not module_dir:
+        return ""
+    for p in sorted(Path(module_dir).glob("Timetable*.md")):
+        return f"[[{p.stem}]]"
+    return ""
 
 
-def existing_stamp(NOTES, name):
-    """The stamp already given to this document, from its note's frontmatter."""
-    for p in layout.raw_dir(NOTES).glob("*.md"):
-        try:
-            head = p.read_text(encoding="utf-8")[:400]
-        except OSError:
-            continue
-        if re.search(rf'^source: "{re.escape(name)}"\s*$', head, re.M):
-            return p.stem
-    return None
-
-
-def ingest(path, VAULT, NOTES, tr_name, log=print):
-    """Create the note and the transcript for one document. Returns the stamp,
+def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
+    """Create the note and the transcript for one document. Returns the key,
     or None when the document had no text."""
     path = Path(path)
-    stamp = existing_stamp(NOTES, path.name) or stamp_for(path, NOTES)
-    transcript = layout.auto_dir(NOTES, "transcripts") / f"{stamp}.md"
-    mynote = layout.raw_dir(NOTES) / f"{stamp}.md"
+    key = key_for(path)
+    transcript = layout.auto_dir(NOTES, "transcripts") / f"{key}.md"
+    mynote = layout.raw_dir(NOTES) / f"{key}.md"
+    module = module_of(path, UNI)
 
     pages = clean(pages_of(path))
     if not pages:
@@ -145,37 +161,53 @@ def ingest(path, VAULT, NOTES, tr_name, log=print):
 
     if not transcript.exists():
         tmp = Path(str(transcript) + ".tmp")
+        rel = os.path.relpath(path, VAULT).replace(os.sep, "/")
         with open(tmp, "w", encoding="utf-8") as f:
             f.write("---\n")
             f.write("type: document-transcript\n")
             f.write(f'source: "{path.name}"\n')
+            f.write(f'source_path: "{rel}"\n')
+            if module:
+                f.write(f'module_folder: "{os.path.relpath(module, VAULT).replace(os.sep, "/")}"\n')
             f.write(f"source_bytes: {path.stat().st_size}\n")
             f.write(f"pages: {len(pages)}\n")
             f.write(f"generated: {datetime.datetime.now():%Y-%m-%d %H:%M}\n")
             f.write("---\n")
-            for label, text in pages:
-                f.write(f"\n\n**[{label}]** {text} ^{label}")
+            for num, paras in pages:
+                for i, para in enumerate(paras, 1):
+                    f.write(f"\n\n**[p{num}.{i}]** {para} ^p{num}-{i}")
             f.write("\n")
         os.replace(tmp, transcript)
 
     if not mynote.exists():
-        rel_src = layout.link(tr_name, "documents", path.name)
+        area = subject = ""
+        if module:
+            relm = os.path.relpath(module, VAULT).split(os.sep)
+            area, subject = (relm[0] if len(relm) > 1 else ""), relm[-1]
         mynote.write_text(rawnote.render(
-            stamp, start=f"{datetime.datetime.now():%Y-%m-%d %H:%M}",
+            key, start=f"{datetime.datetime.now():%Y-%m-%d %H:%M}",
+            schedule=timetable_link(module), area=area, subject=subject,
             kind="Document",
-            transcript_link=layout.link(tr_name, "transcripts", stamp),
-            source_link=rel_src, source=path.name), encoding="utf-8")
-    log(f"document: {path.name} -> {stamp} ({len(pages)} pages)")
-    return stamp
+            transcript_link=layout.link(tr_name, "transcripts", key),
+            source_link=rawnote.vault_link(path, VAULT), source=path.name), encoding="utf-8")
+    log(f"document: {path.name} -> {key} ({len(pages)} pages)")
+    return key
 
 
-def pending(NOTES):
-    d = layout.auto_dir(NOTES, "documents")
-    if not d.is_dir():
-        return []
-    return [p for p in sorted(d.iterdir())
-            if p.is_file() and p.suffix.lower() in DOC_EXT and not p.name.startswith(("_", "."))
-            and existing_stamp(NOTES, p.name) is None]
+def pending(NOTES, UNI, min_age=0):
+    """Documents with no transcript yet, older than min_age seconds."""
+    now = time.time()
+    out = []
+    for d in files_dirs(UNI):
+        for p in sorted(d.iterdir()):
+            if not p.is_file() or p.suffix.lower() not in DOC_EXT or p.name.startswith((".", "_", "~$")):
+                continue
+            if now - p.stat().st_mtime < min_age:
+                continue
+            if (layout.auto_dir(NOTES, "transcripts") / f"{key_for(p)}.md").exists():
+                continue
+            out.append(p)
+    return out
 
 
 def main():
@@ -187,15 +219,16 @@ def main():
     VAULT = Path(sys.argv[1]).expanduser()
     tr_name = cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
     NOTES = VAULT / tr_name
+    UNI = VAULT / cfg.get("UNIVERSITY_DIR", "University")
     layout.ensure(NOTES)
-    files = [Path(a) for a in sys.argv[2:]] or pending(NOTES)
+    files = [Path(a).expanduser().resolve() for a in sys.argv[2:]]
     for f in files:
-        f = f.expanduser().resolve()
-        dest = layout.auto_dir(NOTES, "documents") / f.name
-        if f.parent != dest.parent:
-            shutil.copy2(f, dest)         # a file from elsewhere is brought in
-            f = dest
-        ingest(f, VAULT, NOTES, tr_name)
+        if not f.is_relative_to(VAULT):
+            inbox = UNI / FILES
+            inbox.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, inbox / f.name)
+    for f in (files and [((UNI / FILES / f.name) if not f.is_relative_to(VAULT) else f) for f in files]) or pending(NOTES, UNI):
+        ingest(f, VAULT, NOTES, UNI, tr_name)
 
 
 if __name__ == "__main__":

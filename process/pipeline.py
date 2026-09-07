@@ -21,11 +21,16 @@ sys.path.insert(0, str(HERE))
 import platform_support as ps
 import layout
 import document
+import notehash
+import rawnote
 
 # Room for whisper large-v3 in float16: about 3 GB of weights plus working
 # memory. Only transcription is gated on this; see main().
 MIN_FREE_MIB    = int(os.environ.get("LECTURE_MIN_FREE_MIB", "5000"))
 KEEP_AUDIO_DAYS = int(os.environ.get("LECTURE_KEEP_AUDIO_DAYS", "7"))
+# a changed note of the user's is acted on once it has been left alone this long
+NOTES_SETTLE_MIN = int(os.environ.get("LECTURE_NOTES_SETTLE_MIN", "10"))
+DOC_GRACE_SECS   = 120   # the laptop's watcher gets first go at a new document
 MAX_TRIES       = 2      # then ask, rather than pinning the GPU forever
 RETRY_BACKOFF   = 300
 AUDIO_EXT       = (".ogg", ".mp3", ".m4a", ".wav")
@@ -73,6 +78,7 @@ def main():
     cfg     = read_config()
     VAULT   = Path(cfg["VAULT"])
     NOTES   = VAULT / cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions")
+    UNI     = VAULT / cfg.get("UNIVERSITY_DIR", "University")
     lock = ps.Lock(STATE / "run.lock")
     if not lock.acquire():
         log("skip: another run holds the lock")
@@ -82,7 +88,7 @@ def main():
         # Generated folders live under auto/. An old flat vault is moved and its
         # links rewritten once; markers that still name the old note paths are
         # repaired so nothing is summarised twice.
-        layout.migrate(NOTES, VAULT, log=log)
+        layout.migrate(NOTES, VAULT, log=log, uni=UNI)
         layout.ensure(NOTES)
         layout.fix_markers(NOTES, STATE)
         layout.write_about(NOTES, KEEP_AUDIO_DAYS)
@@ -121,13 +127,15 @@ def main():
         # the next summary needs; gating the whole run on free memory meant
         # that a deleted note was never rewritten while the model stayed
         # resident, and every minute logged "defer" instead.
-        stage_documents(NOTES, VAULT, cfg)
+        stage_documents(NOTES, VAULT, UNI, cfg)
         if 0 <= free < MIN_FREE_MIB:
             if needs_transcription(NOTES):
                 log(f"defer transcription: only {free} MiB free")
         elif stage_transcribe(NOTES, env, free):
             return 0
         if stage_summarise(NOTES, VAULT, env):
+            return 0
+        if stage_refresh(NOTES, VAULT, env):
             return 0
         stage_retire(NOTES)
         stage_retention(NOTES)
@@ -167,11 +175,12 @@ def expected_bytes(NOTES, audio):
     return None
 
 
-def stage_documents(NOTES, VAULT, cfg):
-    """A document dropped into auto/documents gets its note and its cleaned
-    text. Cheap, no GPU, so it never blocks the other stages. A file still
-    arriving through sync is left until its size holds still for a tick."""
-    for doc in document.pending(NOTES):
+def stage_documents(NOTES, VAULT, UNI, cfg):
+    """A document in a Files folder gets its note and its cleaned text.
+    Cheap, no GPU, so it never blocks the other stages. The laptop's watcher
+    is given a grace period first, and a file still arriving through sync is
+    left until its size holds still for a tick."""
+    for doc in document.pending(NOTES, UNI, min_age=DOC_GRACE_SECS):
         size_file = STATE / f"{doc.name}.dsize"
         size_now = doc.stat().st_size
         prev = size_file.read_text().strip() if size_file.exists() else ""
@@ -180,7 +189,49 @@ def stage_documents(NOTES, VAULT, cfg):
             log(f"waiting: {doc.name} is still arriving ({size_now} bytes)")
             continue
         size_file.unlink(missing_ok=True)
-        document.ingest(doc, VAULT, NOTES, cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"), log=log)
+        document.ingest(doc, VAULT, NOTES, UNI, cfg.get("TRANSCRIPTIONS_DIR", "Transcriptions"), log=log)
+
+
+def stage_refresh(NOTES, VAULT, env):
+    """A finished note whose source note has changed is written again, in
+    place, once the user has left the note alone for a while, and never when
+    the finished note itself was edited by hand."""
+    now = time.time()
+    for marker in sorted(STATE.glob("*.done")):
+        key = marker.stem
+        note = Path(marker.read_text().strip())
+        mynote = layout.raw_dir(NOTES) / f"{key}.md"
+        if not note.exists() or not mynote.exists():
+            continue
+        if now - mynote.stat().st_mtime < NOTES_SETTLE_MIN * 60:
+            continue
+        text = note.read_text(encoding="utf-8")
+        was = notehash.frontmatter_field(text, "notes_hash")
+        if not was:
+            continue                       # written before hashes existed
+        current = notehash.norm_hash(rawnote.body(mynote))
+        edited_flag = STATE / f"{key}.handedited"
+        if current == was:
+            edited_flag.unlink(missing_ok=True)
+            continue
+        if notehash.norm_hash(notehash.generated_body(text).rstrip()) != notehash.frontmatter_field(text, "content_hash"):
+            if not edited_flag.exists():
+                log(f"refresh: {key}: your note changed, but the finished note was edited by hand; "
+                    f"leaving it. Delete it to have it written again.")
+                edited_flag.touch()
+            continue
+        transcript = layout.auto_dir(NOTES, "transcripts") / f"{key}.md"
+        if not transcript.exists():
+            continue
+        log(f"refresh: {key}: your note changed, writing the finished note again")
+        r = subprocess.run([venv_py(), str(HERE / "summarise.py"), str(transcript), key, str(VAULT)],
+                           env=dict(env, LECTURE_OUT_PATH=str(note)), text=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        with open(LOG, "a", encoding="utf-8") as lf:
+            lf.write(r.stdout)
+        log(f"refresh: {'done' if r.returncode == 0 else 'FAILED'} {key}")
+        return True
+    return False
 
 
 def stage_transcribe(NOTES, env, free):

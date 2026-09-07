@@ -107,7 +107,7 @@ def main():
     # Generated folders live under auto/, yours beside it. A vault in the old
     # flat layout is moved and its links rewritten here, once, on whichever
     # machine sees it first.
-    layout.migrate(NOTES, VAULT, log=say)
+    layout.migrate(NOTES, VAULT, log=say, uni=UNI)
     layout.ensure(NOTES)
     layout.write_about(NOTES, int(cfg.get("LECTURE_KEEP_AUDIO_DAYS", "7") or 7))
     SCRATCH.mkdir(parents=True, exist_ok=True)

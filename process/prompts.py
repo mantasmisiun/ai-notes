@@ -122,9 +122,9 @@ no introduction, no conclusion.
 
         "hint_audio": """Time markers such as [0:03:08] show where each paragraph of the transcript
 starts.""",
-        "hint_document": """Page markers such as [p3] show where each page of the document starts. A
-"topic" is a section or an argument of the document, and its marker is the
-page it starts on.""",
+        "hint_document": """Markers such as [p3.2] show where each paragraph of the document starts:
+page 3, paragraph 2. A "topic" is a section or an argument of the document,
+and its marker is the paragraph it starts at.""",
         "caveat_audio": """The text is machine-transcribed, so some words are wrong and there may be no
 punctuation. Read through that and write about the subject matter. **Never
 comment on the transcription, list misrecognised words, or discuss the quality
@@ -255,9 +255,9 @@ medžiagą. Išvesk tik blokus, be antraštės virš jų, be įžangos, be išva
 
         "hint_audio": """Laiko žymos, tokios kaip [0:03:08], rodo, kur prasideda kiekviena
 transkripcijos pastraipa.""",
-        "hint_document": """Puslapių žymos, tokios kaip [p3], rodo, kur prasideda kiekvienas dokumento
-puslapis. „Tema“ čia yra dokumento skyrius ar argumentas, o jos žyma yra
-puslapis, kuriame ji prasideda.""",
+        "hint_document": """Žymos, tokios kaip [p3.2], rodo, kur prasideda kiekviena dokumento
+pastraipa: 3 puslapis, 2 pastraipa. „Tema“ čia yra dokumento skyrius ar
+argumentas, o jos žyma yra pastraipa, nuo kurios ji prasideda.""",
         "caveat_audio": """Tekstas transkribuotas automatiškai, todėl kai kurie žodžiai neteisingi ir
 skyrybos gali nebūti. Nekreipk į tai dėmesio ir rašyk apie turinį. **Niekada
 nerašyk apie transkripciją, nevardyk klaidingai atpažintų žodžių ir

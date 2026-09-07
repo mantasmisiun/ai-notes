@@ -195,7 +195,7 @@ if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
     }
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
-& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6
+& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6 pypdf
 if ($nvidia.Count -gt 0) {
     # The benchmark and the live pass run from THIS venv, so the CUDA libraries
     # have to be here. Without them faster-whisper reports a missing
@@ -315,6 +315,10 @@ LECTURE_ASR_MODEL="$asrModel"
 LECTURE_ASR_COMPUTE="$asrCompute"
 LECTURE_LLM="qwen3:8b"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
+
+# ---- the document watcher: a note for a file in Files within a minute ------
+$watch = & "$Root\capture\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'$Root\shared'); import platform_support as p; print(p.register_periodic('ai-notes-documents', [r'$Root\capture\venv\Scripts\pythonw.exe', r'$Root\process\document.py', r'$vault'], 1))"
+Say "  $watch"
 
 # ---- vault layout and a shortcut -------------------------------------------
 Step "Preparing the vault and a shortcut"

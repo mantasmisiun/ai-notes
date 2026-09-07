@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import timetable
 import layout
 import materials
+import notehash
 import prompts
 import rawnote
 
@@ -113,7 +114,7 @@ def unfence(t):
 
 # A marker is a time in a recording, [0:03:08], or a page in a document, [p3].
 # Everything below treats the two alike: an id to link to, an order to sort by.
-LABEL = r"(?:\d{1,2}:\d\d:\d\d|p\d+)"
+LABEL = r"(?:\d{1,2}:\d\d:\d\d|p\d+(?:\.\d+)?)"
 TIME_RE = re.compile(r"\*\*\[(" + LABEL + r")\]\*\*")
 # a marker the model cites, allowing the bold or code it may wrap it in
 CITED_RE = re.compile(r"`?\*{0,2}\[(" + LABEL + r")\]\*{0,2}`?")
@@ -121,14 +122,16 @@ CITED_PLAIN = re.compile(r"\[(" + LABEL + r")\]")
 
 
 def block_id(label):
-    """[0:03:08] -> t0-03-08, [p3] -> p3: an Obsidian block id."""
-    return label if label.startswith("p") else "t" + label.replace(":", "-")
+    """[0:03:08] -> t0-03-08, [p3.2] -> p3-2: an Obsidian block id."""
+    return label.replace(".", "-") if label.startswith("p") else "t" + label.replace(":", "-")
 
 
 def secs(label):
-    """Seconds for a time, the page number for a page: an order either way."""
+    """Seconds for a time; page times a thousand plus paragraph for a
+    document: an order either way."""
     if label.startswith("p"):
-        return int(label[1:])
+        page, _, para = label[1:].partition(".")
+        return int(page) * 1000 + int(para or 0)
     h, m_, s_ = (int(x) for x in label.split(":"))
     return h * 3600 + m_ * 60 + s_
 
@@ -142,7 +145,7 @@ def ensure_block_ids(path):
     paras, changed = [], False
     for para in re.split(r"\n\s*\n", body.strip()):
         m_ = TIME_RE.match(para.strip())
-        if m_ and not re.search(r"\^(?:t[\d-]+|p\d+)\s*$", para):
+        if m_ and not re.search(r"\^(?:t[\d-]+|p[\d-]+)\s*$", para):
             para = para.rstrip() + f" ^{block_id(m_.group(1))}"
             changed = True
         paras.append(para)
@@ -160,7 +163,7 @@ def paragraphs(path):
     out = []
     for para in re.split(r"\n\s*\n", t.strip()):
         m_ = TIME_RE.match(para.strip())
-        body = re.sub(r"\s\^(?:t[\d-]+|p\d+)\s*$", "", TIME_RE.sub("", para))
+        body = re.sub(r"\s\^(?:t[\d-]+|p[\d-]+)\s*$", "", TIME_RE.sub("", para))
         body = re.sub(r"\s+", " ", body).strip()
         if body:
             out.append((m_.group(1) if m_ else None, body))
@@ -419,6 +422,13 @@ _head = open(transcript, encoding="utf-8").read(600)
 IS_DOCUMENT = bool(re.search(r"^type: document-transcript", _head, re.M))
 _src = re.search(r'^source: "(.*)"', _head, re.M)
 SOURCE_NAME = _src.group(1) if _src else ""
+_mod = re.search(r'^module_folder: "(.*)"', _head, re.M)
+MODULE_FOLDER = _mod.group(1) if _mod else ""
+_sp = re.search(r'^source_path: "(.*)"', _head, re.M)
+SOURCE_PATH = _sp.group(1) if _sp else ""
+# Written again in place when the user's note changed: same file, same
+# links, no new title.
+OUT_PATH = os.environ.get("LECTURE_OUT_PATH", "")
 if IS_DOCUMENT:
     context = prompts.describe_document(SOURCE_NAME, subject, NOTELANG)
 else:
@@ -513,8 +523,12 @@ note = top.rstrip() + "\n\n" + merge_blocks("\n\n".join(detail)).rstrip()
 if open_q:
     note += "\n\n" + open_q
 
-print("  titling", flush=True)
-raw_topic = unfence(ask(P["topic"].format(note=note[:4000]), predict=TOPIC_PREDICT))
+topic = ""
+if OUT_PATH or IS_DOCUMENT:
+    raw_topic = ""                       # a document is named after its file
+else:
+    print("  titling", flush=True)
+    raw_topic = unfence(ask(P["topic"].format(note=note[:4000]), predict=TOPIC_PREDICT))
 lines = [l for l in raw_topic.splitlines() if l.strip()]
 # A note without a title is filed under its timestamp. Losing a completed
 # summary because the model returned nothing would be absurd.
@@ -522,7 +536,13 @@ topic = safe(lines[0]) if lines else ""
 if not topic:
     print("  no title returned; filing under the timestamp", flush=True)
 
-if subject_dir:
+if IS_DOCUMENT and MODULE_FOLDER:
+    dest_dir = os.path.join(VAULT, MODULE_FOLDER, layout.DOCUMENTS)
+elif IS_DOCUMENT and subject_dir:
+    dest_dir = os.path.join(subject_dir, layout.DOCUMENTS)
+elif IS_DOCUMENT and area and subject:
+    dest_dir = os.path.join(VAULT, area, subject, layout.DOCUMENTS)
+elif subject_dir:
     dest_dir = os.path.join(subject_dir, SESSIONS)
 elif area and subject:
     dest_dir = os.path.join(VAULT, area, subject, SESSIONS)
@@ -533,7 +553,9 @@ else:
 # cleaning as the title: "LRT Panorama/Paprika" made a directory that did not
 # exist and the note could not be written.
 kind_fs = safe(kind)
-if kind_fs and topic:
+if IS_DOCUMENT:
+    fname = f"{stamp}.md"                # keyed by the file's name
+elif kind_fs and topic:
     fname = f"{stamp} {kind_fs} - {topic}.md"
 elif topic:
     fname = f"{stamp} - {topic}.md"
@@ -545,7 +567,9 @@ else:
 os.makedirs(dest_dir, exist_ok=True)
 if os.path.basename(dest_dir) == SESSIONS:
     layout.write_sessions_about(dest_dir)
-out = os.path.join(dest_dir, fname)
+if os.path.basename(dest_dir) == layout.DOCUMENTS:
+    layout.write_documents_about(dest_dir)
+out = OUT_PATH or os.path.join(dest_dir, fname)
 tmp = out + ".tmp"
 
 audio = None
@@ -574,12 +598,17 @@ with open(tmp, "w", encoding="utf-8") as f:
         f.write(f"session: {kind}\n")
     if m:
         f.write(f"module: {m['code']}\n")
-    f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n---\n\n")
+    f.write(f"model: {MODEL}\nnote_language: {NOTELANG}\n")
+    # what the summary was written from, and what it says: a change in the
+    # first asks for a rewrite, a change in the second forbids one
+    f.write(f"notes_hash: {notehash.norm_hash(own)}\n")
+    f.write(f"content_hash: {notehash.norm_hash(note.rstrip())}\n")
+    f.write("---\n\n")
     f.write(note.rstrip() + "\n\n---\n\n")
     f.write(f"My notes: [[{raw_link}]]\n")
     f.write(f"Transcript: [[{rel_transcript}]]\n")
-    if IS_DOCUMENT:
-        f.write(f"Source: [[{layout.link(os.path.basename(NOTES), 'documents', SOURCE_NAME)}]]\n")
+    if IS_DOCUMENT and SOURCE_PATH:
+        f.write(f"Source: [[{SOURCE_PATH}]]\n")
     if audio:
         f.write(f"\n![[{audio}]]\n")
 

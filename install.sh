@@ -306,6 +306,16 @@ if [ "$want_capture" = 1 ]; then
   fi
 fi
 
+# ---- the document watcher: a note for a file in Files within a minute ------
+if [ "$want_capture" = 1 ] || [ "$want_process" = 1 ]; then
+  python3 - "$ROOT" "$vault" <<'WATCH' 2>&1 | sed 's/^/  /'
+import sys; sys.path.insert(0, sys.argv[1] + "/shared")
+import platform_support as ps, shutil
+py = shutil.which("python3") or sys.executable
+print(ps.register_periodic("ai-notes-documents", [py, sys.argv[1] + "/process/document.py", sys.argv[2]], 1))
+WATCH
+fi
+
 # ---- accurate model, derived from VRAM rather than asked -------------------
 if [ "$want_process" = 1 ]; then
   # The Lithuanian model in float16 where the card allows it: int8 on an
@@ -396,6 +406,8 @@ if [ "$want_capture" = 1 ] && [ -n "$live" ]; then
   say "    $tr_dir/auto/live/    the live transcript, rewritten as it goes"
   say "    $tr_dir/my notes/    yours: write here, fill in the table to file it"
   say "  Everything under $tr_dir/auto/ is the pipeline's; each folder has an _about.md."
+  say "  A PDF, DOCX, PPTX or XLSX in a module's Files/ folder gets a note of"
+  say "  yours within a minute; its finished note lands in the module's Documents/."
   say
   say "  Live model: $(basename "$live") on $backend, updating every ${chunk_secs:-12}s."
 elif [ "$want_capture" = 1 ]; then

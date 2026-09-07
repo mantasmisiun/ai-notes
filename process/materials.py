@@ -163,10 +163,41 @@ def passages(text, target=120):
     return out
 
 
+def processed_note(vault, target):
+    """The finished note the pipeline wrote for this document, if any: a
+    markdown file named after the document's stem, typed document-note,
+    anywhere outside the generated folders. It is compact, structured, and
+    has its names settled, so it beats the raw text as material."""
+    stem = Path(target).stem.lower()
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != "auto"]
+        for f in files:
+            if f.lower() == stem + ".md":
+                p = Path(root) / f
+                try:
+                    head = p.read_text(encoding="utf-8")[:600]
+                except OSError:
+                    continue
+                if re.search(r"^type: document-note", head, re.M):
+                    return p
+    return None
+
+
 def collect(note_text, vault, near=None, max_words_per_doc=6000):
-    """(documents, messages). Each document: name, path, words, passages."""
+    """(documents, messages). Each document: name, path, words, passages.
+    A link to a document that has been through the funnel yields its
+    finished note; one that has not yields the raw text."""
     docs, msgs = [], []
     for target in links(note_text):
+        note = processed_note(vault, target) if Path(target).suffix.lower() != ".md" else None
+        if note:
+            text = re.sub(r"^---\n.*?\n---\n", "", note.read_text(encoding="utf-8"), count=1, flags=re.S)
+            text = re.split(r"\n---\n\n(?:My notes|Your notes|Raw note):", text)[0]
+            words = text.split()
+            docs.append({"name": note.stem + " (finished note)", "path": str(note),
+                         "words": len(words), "passages": passages(text)})
+            msgs.append(f"material: {note.stem}, finished note, {len(words)} words")
+            continue
         path = resolve(target, vault, near)
         if not path:
             msgs.append(f"material not found: {target}")

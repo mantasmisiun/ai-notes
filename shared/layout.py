@@ -25,7 +25,8 @@ import re
 from pathlib import Path
 
 AUTO = "auto"
-GENERATED = ("live", "transcripts", "audio", "unfiled", "documents")
+GENERATED = ("live", "transcripts", "audio", "unfiled")
+DOCUMENTS = "Documents"       # a module folder for finished document notes
 RAW = "my notes"
 RAW_OLD = ("raw notes", "your notes")   # earlier names, migrated on sight
 ABOUT = "_about.md"
@@ -67,10 +68,29 @@ def _rewrite(text, pats):
     return text
 
 
-def migrate(notes, vault, log=print):
+def migrate(notes, vault, log=print, uni=None):
     """Move an old-layout vault under auto/ and rewrite the links. Returns
     True when there was something to move."""
     notes, vault = Path(notes), Path(vault)
+    # documents briefly lived under auto/documents; they belong in a Files
+    # folder under University, the inbox when their module is not known
+    old_docs = notes / AUTO / "documents"
+    if uni and old_docs.is_dir():
+        inbox = Path(uni) / "Files"
+        inbox.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for f in list(old_docs.iterdir()):
+            if f.name == ABOUT or f.name.endswith(".tmp"):
+                f.unlink(missing_ok=True)
+                continue
+            if f.is_file() and not (inbox / f.name).exists():
+                os.replace(f, inbox / f.name)
+                n += 1
+        try:
+            old_docs.rmdir()
+        except OSError:
+            pass
+        log(f"layout: moved {n} documents from auto/documents to {inbox.relative_to(vault)}")
     old = [k for k in GENERATED if (notes / k).is_dir()]
     old += [k for k in RAW_OLD if (notes / k).is_dir()]
     if not old:
@@ -156,7 +176,6 @@ Anything you type here is overwritten or deleted. Your own notes belong in
 | transcripts | the accurate transcript, generated once from the audio | kept |
 | audio | the recording | deleted {keep_days} days after its note is written |
 | unfiled | finished notes that do not know their Area and Subject yet | filed once you fill the table in your note |
-| documents | PDF, DOCX, PPTX or XLSX you drop in to be read like a recording | kept |
 """,
         auto_dir(notes, "live"): """# Live transcripts
 
@@ -177,15 +196,6 @@ Kept for {keep_days} days after the finished note is written, then deleted.
 The note and the transcript stay; only the embedded player in them stops
 working. Copy a recording elsewhere if you want to keep it.
 """,
-        auto_dir(notes, "documents"): """# Documents
-
-Drop a PDF, DOCX, PPTX or XLSX here and it goes through the same funnel as a
-recording. Within a minute of reaching the processing machine a note appears
-in `my notes` for you to write in while you read; the document's text, cleaned
-of headers, footers and page numbers, appears in `transcripts` with page
-markers; and a summary follows, written from your note and that text. The
-file itself stays here.
-""",
         auto_dir(notes, "unfiled"): """# Unfiled notes
 
 Finished notes that do not know where they belong. To file one, open its raw
@@ -203,6 +213,14 @@ and adds a link to the finished note.
 """,
     }
 
+
+DOCUMENTS_ABOUT = """# Document notes
+
+One note per file in Files, written by the pipeline once from your note and
+the document's text, yours after that. Annotate freely. It is written again
+only when your note for it changes and this note has not been edited by
+hand; delete it to have it written afresh.
+"""
 
 SESSIONS_ABOUT = """# Session notes
 
@@ -237,3 +255,9 @@ def write_sessions_about(sessions_dir):
     p = Path(sessions_dir) / ABOUT
     if not p.exists():
         _write_if_changed(p, SESSIONS_ABOUT)
+
+
+def write_documents_about(documents_dir):
+    p = Path(documents_dir) / ABOUT
+    if not p.exists():
+        _write_if_changed(p, DOCUMENTS_ABOUT)
