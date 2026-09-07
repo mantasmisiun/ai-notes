@@ -248,6 +248,93 @@ only when your note for it changes and this note has not been edited by
 hand; delete it to have it written afresh.
 """
 
+MY_NOTES_ABOUT = """# My notes
+
+Your notes for this module's recordings and documents, moved here from
+Transcriptions/my notes when each finished note was filed. Yours entirely;
+the pipeline reads them and never rewrites them.
+"""
+
+
+def find_my_note(vault, notes, key):
+    """The user's note for a recording or document: the inbox first, then any
+    "my notes" folder in the vault, since a filed note moves into its module.
+    Looked up by name, so a note the user moved by hand is still found."""
+    inbox = raw_dir(notes) / f"{key}.md"
+    if inbox.exists():
+        return inbox
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d != AUTO]
+        if os.path.basename(root) == RAW and f"{key}.md" in files:
+            return Path(root) / f"{key}.md"
+    return None
+
+
+def rewrite_links(vault, old_rel, new_rel, log=None):
+    """Point every wikilink at old_rel to new_rel across the vault. Targets
+    are matched whole: [[old]] and [[old|alias]] and [[old#^id]] change,
+    [[old-something]] does not."""
+    rx = re.compile(r"\[\[" + re.escape(old_rel) + r"(?=[\]|#])")
+    n = 0
+    for root, dirs, files in os.walk(vault):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for fn in files:
+            if not fn.endswith(".md"):
+                continue
+            p = Path(root) / fn
+            try:
+                text = p.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            new = rx.sub("[[" + new_rel, text)
+            if new != text:
+                tmp = p.with_name(p.name + ".tmp")
+                tmp.write_text(new, encoding="utf-8")
+                os.replace(tmp, p)
+                n += 1
+    if log and n:
+        log(f"filed: {n} note(s) now link to {new_rel}")
+    return n
+
+
+def _rel(path, vault):
+    r = os.path.relpath(path, vault).replace(os.sep, "/")
+    return r[:-3] if r.endswith(".md") else r
+
+
+def file_into_module(vault, notes, module_dir, key, source_path=None, log=None):
+    """When a finished note is filed, its companions move into the module:
+    the user's note to <module>/my notes, a document to <module>/Files.
+    Every link to either is rewritten. Idempotent."""
+    vault, module_dir = Path(vault), Path(module_dir)
+    moved = []
+    note = find_my_note(vault, notes, key)
+    if note and note.parent != module_dir / RAW:
+        dest_dir = module_dir / RAW
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        p = dest_dir / ABOUT
+        if not p.exists():
+            _write_if_changed(p, MY_NOTES_ABOUT)
+        dest = dest_dir / note.name
+        if not dest.exists():
+            old_rel, new_rel = _rel(note, vault), _rel(dest, vault)
+            os.replace(note, dest)
+            rewrite_links(vault, old_rel, new_rel, log)
+            moved.append(("note", new_rel))
+    if source_path:
+        src = vault / source_path
+        if src.is_file() and src.parent != module_dir / "Files":
+            dest_dir = module_dir / "Files"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            dest = dest_dir / src.name
+            if not dest.exists():
+                old_rel, new_rel = _rel(src, vault), _rel(dest, vault)
+                os.replace(src, dest)
+                rewrite_links(vault, old_rel, new_rel, log)
+                moved.append(("file", new_rel))
+    return moved
+
+
 SESSIONS_ABOUT = """# Session notes
 
 Written by the pipeline once, yours after that. Annotate freely: nothing

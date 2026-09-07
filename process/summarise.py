@@ -331,7 +331,8 @@ def collect_notes(stamp, lectures_dir):
     """The student's own notes, from the file created alongside the recording
     and from anything already filed for this lecture in the module folder."""
     found = []
-    raw = str(layout.raw_dir(NOTES) / f"{stamp}.md")
+    raw = layout.find_my_note(VAULT, NOTES, stamp)
+    raw = str(raw) if raw else ""
     if os.path.exists(raw):
         body = rawnote.body(raw)
         if body:
@@ -405,7 +406,8 @@ if own:
 
 # What this recording is has to be known before the prompts are built, so a
 # review or an interview is not summarised as though it were a lecture.
-raw_path = str(layout.raw_dir(NOTES) / f"{stamp}.md")
+_rp = layout.find_my_note(VAULT, NOTES, stamp)
+raw_path = str(_rp) if _rp else str(layout.raw_dir(NOTES) / f"{stamp}.md")
 table = rawnote.parse(raw_path) if os.path.exists(raw_path) else {}
 area, subject = table.get("Area", "").strip(), table.get("Subject", "").strip()
 kind = table.get("Type", "").strip() or (m["kind"] if m else "")
@@ -579,7 +581,8 @@ for ext in (".ogg", ".mp3", ".m4a", ".wav"):
         audio = os.path.relpath(p, VAULT).replace(os.sep, "/")
         break
 
-raw_link = layout.link(os.path.basename(NOTES), layout.RAW, stamp)
+raw_link = (os.path.relpath(raw_path, VAULT)[:-3].replace(os.sep, "/") if os.path.exists(raw_path)
+            else layout.link(os.path.basename(NOTES), layout.RAW, stamp))
 
 with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
@@ -637,6 +640,22 @@ try:
     if os.path.exists(raw_path):
         rel_out = os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/")
         rawnote.set_link(raw_path, "Summary", rel_out)
+        # Filed into a module: the note's companions follow it. The user's
+        # note moves to <module>/my notes, a document to <module>/Files, and
+        # every link to them is rewritten. The inbox then holds only what is
+        # not yet filed.
+        if os.path.basename(dest_dir) in (SESSIONS, layout.DOCUMENTS):
+            module_dir = os.path.dirname(out)
+            module_dir = os.path.dirname(module_dir)
+            for what, new_rel in layout.file_into_module(
+                    VAULT, NOTES, module_dir, stamp,
+                    source_path=SOURCE_PATH if IS_DOCUMENT else None,
+                    log=lambda m: print("  " + m, flush=True)):
+                print(f"  filed: {what} -> {new_rel}", flush=True)
+                if what == "file":
+                    t = open(transcript, encoding="utf-8").read()
+                    t = re.sub(r'^source_path: ".*"$', f'source_path: "{new_rel}"', t, count=1, flags=re.M)
+                    open(transcript, "w", encoding="utf-8").write(t)
 except Exception:
     pass          # a missing backlink must not fail a completed summary
 

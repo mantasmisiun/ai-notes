@@ -5,7 +5,10 @@ Owned entirely by the pipeline and regenerated from scratch each run, so it is
 idempotent and never accumulates duplicates. Your timetable notes are only read,
 never written; embed the index with  ![[Sessions/_index]]  once per module.
 """
-import os, re, sys, glob
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'shared'))
+import layout, re, sys, glob
 
 VAULT = os.path.expanduser(sys.argv[1])
 UNI   = os.path.join(VAULT, os.environ.get("UNIVERSITY_DIR", "University"))
@@ -66,7 +69,8 @@ for lect_dir in sorted(candidates):
         au = first_existing(os.path.join(NOTES, "auto", "audio"), stamp,
                             [".ogg", ".mp3", ".m4a", ".wav"])
 
-        rawn = os.path.join(NOTES, "my notes", stamp + ".md")
+        rawn = layout.find_my_note(VAULT, NOTES, stamp)
+        rawn = str(rawn) if rawn else ""
         rows.append((
             fm.get("date", stamp[:10]),
             fm.get("time", stamp[-4:-2] + ":" + stamp[-2:]),

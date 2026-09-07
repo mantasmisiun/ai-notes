@@ -201,8 +201,8 @@ def stage_refresh(NOTES, VAULT, env):
     for marker in sorted(STATE.glob("*.done")):
         key = marker.stem
         note = Path(marker.read_text().strip())
-        mynote = layout.raw_dir(NOTES) / f"{key}.md"
-        if not note.exists() or not mynote.exists():
+        mynote = layout.find_my_note(VAULT, NOTES, key)
+        if not note.exists() or not mynote:
             continue
         if now - mynote.stat().st_mtime < NOTES_SETTLE_MIN * 60:
             continue

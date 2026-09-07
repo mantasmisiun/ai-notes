@@ -133,7 +133,7 @@ def ingest(path, VAULT, NOTES, UNI, tr_name, log=print):
     path = Path(path)
     key = key_for(path)
     transcript = layout.auto_dir(NOTES, "transcripts") / f"{key}.md"
-    mynote = layout.raw_dir(NOTES) / f"{key}.md"
+    mynote = layout.find_my_note(VAULT, NOTES, key) or (layout.raw_dir(NOTES) / f"{key}.md")
 
     pages = clean(pages_of(path))
     if not pages:
