@@ -46,6 +46,26 @@ def ensure(notes):
     raw_dir(notes).mkdir(parents=True, exist_ok=True)
 
 
+FILES = "Files"
+FILES_ABOUT = """# Files
+
+Drop a PDF, DOCX, PPTX or XLSX here, or into a module's own Files folder,
+and within a minute a note of yours appears in my notes to write in while
+you read. The document's text goes to transcripts with page and paragraph
+markers, and a finished note follows in the module's Documents folder, or in
+unfiled for a file dropped here, where its module is not yet known.
+"""
+
+
+def ensure_university(uni):
+    """The inbox for documents that belong to no module yet, with its note."""
+    inbox = Path(uni) / FILES
+    inbox.mkdir(parents=True, exist_ok=True)
+    p = inbox / ABOUT
+    if not p.exists():
+        _write_if_changed(p, FILES_ABOUT)
+
+
 def link(tr_name, kind, name):
     """Vault-relative wikilink target, forward slashes whatever the OS."""
     if kind == RAW:

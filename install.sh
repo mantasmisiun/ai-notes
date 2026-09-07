@@ -195,7 +195,15 @@ fi
 # first pass: the component installers need the paths before they can run
 backend="${LECTURE_BACKEND:-cpu}"; live=""; chunk_secs=""; window_secs=""; asr_model=""; asr_compute=""; llm="$d_llm"
 write_config
-mkdir -p "$vault/$tr_dir"/{live,transcripts,audio,unfiled} "$scratch"
+mkdir -p "$scratch"
+# the vault layout comes from one place; a flat mkdir here recreated the old
+# folders beside auto/ on every run of the installer
+python3 - "$ROOT" "$vault" "$tr_dir" "$uni_dir" <<'LAYOUT'
+import sys; sys.path.insert(0, sys.argv[1] + "/shared"); import layout
+notes = sys.argv[2] + "/" + sys.argv[3]; uni = sys.argv[2] + "/" + sys.argv[4]
+layout.migrate(notes, sys.argv[2], log=lambda m: print("  " + m), uni=uni)
+layout.ensure(notes); layout.ensure_university(uni); layout.write_about(notes)
+LAYOUT
 "$ROOT/lib/example-module.sh" "$vault/$uni_dir"
 
 # ---- the live model: your pick, measured ----------------------------------

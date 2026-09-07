@@ -90,6 +90,7 @@ def main():
         # repaired so nothing is summarised twice.
         layout.migrate(NOTES, VAULT, log=log, uni=UNI)
         layout.ensure(NOTES)
+        layout.ensure_university(UNI)
         layout.fix_markers(NOTES, STATE)
         layout.write_about(NOTES, KEEP_AUDIO_DAYS)
 
