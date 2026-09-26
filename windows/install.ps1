@@ -271,7 +271,9 @@ $scratch = "$env:LOCALAPPDATA\lecture-pipeline" -replace '\\', '/'
 $llm = Prev "LECTURE_LLM" "gemma3:12b"
 if ($wantProcess -eq 1) {
     $vramTotal = 0
-    $v = Quiet "nvidia-smi" @("--query-gpu=memory.total", "--format=csv,noheader,nounits")
+    # @() because PowerShell unwraps a one-line result into a plain string, and
+    # $v[0] of "12288" is "1": a 12 GB card was sized as 1 MiB.
+    $v = @(Quiet "nvidia-smi" @("--query-gpu=memory.total", "--format=csv,noheader,nounits"))
     if ($v.Count -gt 0 -and "$($v[0])".Trim() -match '^\d+$') { $vramTotal = [int]"$($v[0])".Trim() }
     # Each family at the largest size whose Q4 weights fit with 1.5 GB to
     # spare, as in install.sh. Ollama spills what does not fit to the CPU:
