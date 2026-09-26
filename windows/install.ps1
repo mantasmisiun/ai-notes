@@ -129,6 +129,7 @@ Step "Detected"
 if ($gpus.Count -eq 0) { Say "  GPU     none reported" }
 foreach ($g in $gpus) { Say "  GPU     $g" }
 
+$wantCapture = 1
 $wantProcess = 0
 # Processing needs CUDA, so it needs both an NVIDIA card and a working driver.
 if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
@@ -136,9 +137,13 @@ if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
     Say "That card can do the transcription and note writing as well."
     Say ""
     Say "  1) Record only, another machine writes the notes"
-    Say "  2) Both: record here and produce the notes here"
+    Say "  2) Processing only: write the notes for recordings made elsewhere"
+    Say "  3) Both: record here and produce the notes here"
     Say ""
-    if ((Ask "Select" "1") -eq "2") { $wantProcess = 1 }
+    switch (Ask "Select" "1") {
+        "2" { $wantCapture = 0; $wantProcess = 1 }
+        "3" { $wantProcess = 1 }
+    }
 } elseif ($nvidia.Count -gt 0) {
     Say ""
     Say "  An NVIDIA card is present but nvidia-smi is not available, so the"
@@ -223,57 +228,60 @@ if ($lang -eq "lt") {
     Say "  ready: $ltModel"
 }
 
-Step "Measuring this machine"
-Say "  Trying the largest model first and falling back only if it cannot keep"
-Say "  up. Models are downloaded as they are needed, so this takes a while."
-Say ""
-
-# gpu_probe reports vendor, name, total VRAM, whether the card is discrete, and free VRAM
-$probe = & "$Root\capture\venv\Scripts\python.exe" "$Root\shared\gpu_probe.py"
-$parts = $probe -split "`t"
-$vram = 0; $discrete = 0; $cuda = 0
-if ($parts.Count -ge 4) {
-    $vram = [int]$parts[2]
-    $discrete = [int]$parts[3]
-    if ($parts[0] -eq "nvidia") { $cuda = 1 }
-}
-
-$env:HAS_CUDA = "$cuda"
-$env:GPU_DISCRETE = "$discrete"
-$env:VRAM_MIB = "$vram"
-$env:VRAM_FREE_MIB = if ($parts.Count -ge 5) { $parts[4] } else { "$vram" }
-$env:MIN_LIVE_FACTOR = "1.2"
-$env:LECTURE_FIXED_MODEL = "$ltModel"
-
-# Stream rather than capture. Collecting the output first means nothing
-# appears until the whole benchmark finishes, which on a slow machine with
-# models to download is many minutes of a blank screen.
-$r = Native "$Root\capture\venv\Scripts\python.exe" @("$Root\lib\benchmark.py", $lang, "$Root\samples", "$Root\.bench")
-$bench = $r.Lines
-# The result line is tab-separated, so a wildcard with a space after RESULT
-# never matched it. That silently turned every measured model into "none".
-$resultLine = $bench | Where-Object { $_ -match "^RESULT`t" } | Select-Object -Last 1
-$result = if ($resultLine) { "$resultLine" } else { "" }
-
+# The benchmark picks the live model, so a machine that only processes skips it.
 $liveModel = ""; $chunkSecs = 12; $windowSecs = 30; $backend = "cpu"
-if ($result) {
-    $rp = $result -split "`t"
-    # fields: RESULT, backend, model, factor, interval, window
-    if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2]; $backend = $rp[1] }
-    if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
-    if ($rp.Count -ge 6) { $windowSecs = $rp[5] }
-}
-# the config is parsed as KEY="value" with forward slashes; keep a path usable
-if ($liveModel -and (Test-Path $liveModel)) { $liveModel = $liveModel -replace '\\', '/' }
+if ($wantCapture -eq 1) {
+    Step "Measuring this machine"
+    Say "  Trying the largest model first and falling back only if it cannot keep"
+    Say "  up. Models are downloaded as they are needed, so this takes a while."
+    Say ""
 
-if (-not $liveModel) {
+    # gpu_probe reports vendor, name, total VRAM, whether the card is discrete, and free VRAM
+    $probe = & "$Root\capture\venv\Scripts\python.exe" "$Root\shared\gpu_probe.py"
+    $parts = $probe -split "`t"
+    $vram = 0; $discrete = 0; $cuda = 0
+    if ($parts.Count -ge 4) {
+        $vram = [int]$parts[2]
+        $discrete = [int]$parts[3]
+        if ($parts[0] -eq "nvidia") { $cuda = 1 }
+    }
+
+    $env:HAS_CUDA = "$cuda"
+    $env:GPU_DISCRETE = "$discrete"
+    $env:VRAM_MIB = "$vram"
+    $env:VRAM_FREE_MIB = if ($parts.Count -ge 5) { $parts[4] } else { "$vram" }
+    $env:MIN_LIVE_FACTOR = "1.2"
+    $env:LECTURE_FIXED_MODEL = "$ltModel"
+
+    # Stream rather than capture. Collecting the output first means nothing
+    # appears until the whole benchmark finishes, which on a slow machine with
+    # models to download is many minutes of a blank screen.
+    $r = Native "$Root\capture\venv\Scripts\python.exe" @("$Root\lib\benchmark.py", $lang, "$Root\samples", "$Root\.bench")
+    $bench = $r.Lines
+    # The result line is tab-separated, so a wildcard with a space after RESULT
+    # never matched it. That silently turned every measured model into "none".
+    $resultLine = $bench | Where-Object { $_ -match "^RESULT`t" } | Select-Object -Last 1
+    $result = if ($resultLine) { "$resultLine" } else { "" }
+
+    if ($result) {
+        $rp = $result -split "`t"
+        # fields: RESULT, backend, model, factor, interval, window
+        if ($rp.Count -ge 3 -and $rp[1] -ne "none") { $liveModel = $rp[2]; $backend = $rp[1] }
+        if ($rp.Count -ge 5) { $chunkSecs = $rp[4] }
+        if ($rp.Count -ge 6) { $windowSecs = $rp[5] }
+    }
+    # the config is parsed as KEY="value" with forward slashes; keep a path usable
+    if ($liveModel -and (Test-Path $liveModel)) { $liveModel = $liveModel -replace '\\', '/' }
+}
+
+if ($wantCapture -eq 1 -and -not $liveModel) {
     Say ""
     Say "Nothing on this machine keeps up with live transcription in this"
     Say "language. Recording still works and the notes are produced later on a"
     Say "machine that can."
     Say ""
-    $liveModel = "none"
 }
+if (-not $liveModel) { $liveModel = "none" }
 
 if ($wantProcess -eq 1) {
     Step "Building the processing environment"
@@ -287,6 +295,10 @@ if ($wantProcess -eq 1) {
         }
     }
     & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6 pypdf openpyxl
+    # The Linux installer's systemd timer, as a scheduled task. pythonw, so the
+    # run every minute does not flash a console window; it logs to run.log.
+    $sched = & "$Root\process\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'$Root\shared'); import platform_support as p; print(p.register_periodic('lecture-notes', [r'$Root\process\venv\Scripts\pythonw.exe', r'$Root\process\pipeline.py'], 1))"
+    Say "  $sched"
     Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
     Say "  Then set OLLAMA_KEEP_ALIVE=30s as a user environment variable."
 }
@@ -302,7 +314,7 @@ TRANSCRIPTIONS_DIR="Transcriptions"
 UNIVERSITY_DIR="University"
 AUDIO_SCRATCH="$scratch"
 
-WANT_CAPTURE=1
+WANT_CAPTURE=$wantCapture
 WANT_PROCESS=$wantProcess
 LECTURE_BACKEND="$backend"
 
@@ -329,31 +341,42 @@ foreach ($d in @("auto\live", "auto\transcripts", "auto\audio", "auto\unfiled", 
 }
 New-Item -ItemType Directory -Force "$vault\University" | Out-Null
 
-# The shortcut points straight at the console-less interpreter. A .bat in
-# between opened a cmd window that sat there for the whole recording, and the
-# worker and ffmpeg each opened one more; those are suppressed in record.py.
-$pyw = "$Root\capture\venv\Scripts\pythonw.exe"
-$ws = New-Object -ComObject WScript.Shell
-$lnk = $ws.CreateShortcut("$HOME\Desktop\Transcribe.lnk")
-$lnk.TargetPath = $pyw
-$lnk.Arguments = "`"$Root\capture\record.py`""
-$lnk.WorkingDirectory = $Root
-$lnk.IconLocation = "$Root\windows\transcribe.ico,0"
-$lnk.Description = "Start or stop a lecture recording"
-$lnk.Save()
-Remove-Item "$HOME\Desktop\Record lecture.lnk" -ErrorAction SilentlyContinue
-Remove-Item "$Root\windows\record.bat" -ErrorAction SilentlyContinue
-Say "  shortcut on your Desktop: Transcribe"
+if ($wantCapture -eq 1) {
+    # The shortcut points straight at the console-less interpreter. A .bat in
+    # between opened a cmd window that sat there for the whole recording, and the
+    # worker and ffmpeg each opened one more; those are suppressed in record.py.
+    $pyw = "$Root\capture\venv\Scripts\pythonw.exe"
+    $ws = New-Object -ComObject WScript.Shell
+    $lnk = $ws.CreateShortcut("$HOME\Desktop\Transcribe.lnk")
+    $lnk.TargetPath = $pyw
+    $lnk.Arguments = "`"$Root\capture\record.py`""
+    $lnk.WorkingDirectory = $Root
+    $lnk.IconLocation = "$Root\windows\transcribe.ico,0"
+    $lnk.Description = "Start or stop a lecture recording"
+    $lnk.Save()
+    Remove-Item "$HOME\Desktop\Record lecture.lnk" -ErrorAction SilentlyContinue
+    Remove-Item "$Root\windows\record.bat" -ErrorAction SilentlyContinue
+    Say "  shortcut on your Desktop: Transcribe"
+}
 
 Write-Host ""
 Write-Host "================================================================"
 Write-Host ""
-Say "To record: double-click 'Transcribe' on your Desktop."
-Say "A window with a flashing red light stays on top while it records."
-Say "Press Stop recording, or double-click the shortcut again."
-Say ""
-Say "While recording, two files appear:"
-Say "  $vault\Transcriptions\live         the live transcript, rewritten as it goes"
-Say "  $vault\Transcriptions\my notes    yours: write here, fill in the table to file it"
-Say ""
+if ($wantCapture -eq 1) {
+    Say "To record: double-click 'Transcribe' on your Desktop."
+    Say "A window with a flashing red light stays on top while it records."
+    Say "Press Stop recording, or double-click the shortcut again."
+    Say ""
+    Say "While recording, two files appear:"
+    Say "  $vault\Transcriptions\live         the live transcript, rewritten as it goes"
+    Say "  $vault\Transcriptions\my notes    yours: write here, fill in the table to file it"
+    Say ""
+} else {
+    Say "This machine writes the notes. Every minute it looks for new recordings"
+    Say "in $vault\Transcriptions\auto\audio and turns them into notes."
+    Say ""
+    Say "Progress is logged to $env:LOCALAPPDATA\lecture-notes\state\run.log"
+    Say "Check the task with:  schtasks /Query /TN lecture-notes"
+    Say ""
+}
 Read-Host "Press Enter to close"

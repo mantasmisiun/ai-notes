@@ -1,7 +1,8 @@
 # Windows
 
-Capture and processing both run on Windows. The setup is manual, because the
-installer is still a bash script.
+Capture and processing both run on Windows. `windows\install.bat` does
+everything below: record only, processing only, or both, and for processing it
+registers the scheduled task. This page is the same setup done by hand.
 
 **None of this has been executed on Windows.** It is written from
 documentation, not from a working machine. Expect to hit something. The most
@@ -82,10 +83,11 @@ and restart it.
 Then register the timer:
 
 ```
-process\venv\Scripts\python -c "import sys; sys.path.insert(0,'shared'); import platform_support as p; print(p.register_periodic('lecture-notes', [r'%CD%\process\venv\Scripts\python.exe', r'%CD%\process\pipeline.py'], 1))"
+process\venv\Scripts\python -c "import sys; sys.path.insert(0,'shared'); import platform_support as p; print(p.register_periodic('lecture-notes', [r'%CD%\process\venv\Scripts\pythonw.exe', r'%CD%\process\pipeline.py'], 1))"
 ```
 
-Check it with `schtasks /Query /TN lecture-notes`, and read
+`pythonw` keeps a console window from flashing up every minute. Check it with
+`schtasks /Query /TN lecture-notes`, and read
 `%LOCALAPPDATA%\lecture-notes\state\run.log` to see what it is doing.
 
 ## Known gaps
