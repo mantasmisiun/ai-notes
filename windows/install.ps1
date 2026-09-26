@@ -56,6 +56,48 @@ function Native([string]$exe, [string[]]$argv) {
     return @{ Lines = $lines; Code = $code }
 }
 
+# The previous answers, so a re-run offers them as defaults and "Change models
+# only" can keep everything else, as install.sh does.
+$Conf = "$Root\config.sh"
+$PrevCfg = @{}
+if (Test-Path $Conf) {
+    foreach ($line in (Get-Content $Conf -Encoding UTF8)) {
+        if (-not $line.TrimStart().StartsWith("#") -and $line -match '^\s*([A-Z_]+)="?(.*?)"?\s*$') {
+            $PrevCfg[$Matches[1]] = $Matches[2]
+        }
+    }
+}
+function Prev($key, $default) {
+    if ($PrevCfg.ContainsKey($key) -and $PrevCfg[$key]) { return $PrevCfg[$key] }
+    return $default
+}
+
+# A native program's stdout without echoing it, and without its stderr
+# aborting the script (see Native).
+function Quiet([string]$exe, [string[]]$argv) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try { $out = & $exe @argv 2>$null } catch { $out = @() }
+    $ErrorActionPreference = $prev
+    return @($out)
+}
+
+function OllamaUp {
+    try {
+        Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 "http://127.0.0.1:11434/api/version" | Out-Null
+        return $true
+    } catch { return $false }
+}
+
+# The Windows build is a tray app that runs the server; the bare CLI is the
+# fallback when the app is not where the installer puts it.
+function StartOllama {
+    $app = "$env:LOCALAPPDATA\Programs\Ollama\ollama app.exe"
+    if (Test-Path $app) { Start-Process $app }
+    else { Start-Process "ollama" -ArgumentList "serve" -WindowStyle Hidden }
+    for ($i = 0; $i -lt 30 -and -not (OllamaUp); $i++) { Start-Sleep 1 }
+}
+
 function Ask($prompt, $default) {
     $r = Read-Host "$prompt [$default]"
     if ([string]::IsNullOrWhiteSpace($r)) { return $default }
@@ -129,10 +171,31 @@ Step "Detected"
 if ($gpus.Count -eq 0) { Say "  GPU     none reported" }
 foreach ($g in $gpus) { Say "  GPU     $g" }
 
+$modelsOnly = 0
+if ($PrevCfg.Count -gt 0) {
+    Say ""
+    Say "An existing configuration was found for this machine."
+    Say ""
+    Say "  1) Change models only, keep everything else"
+    Say "  2) Reconfigure everything, your previous answers appear as defaults"
+    Say "  3) Cancel"
+    Say ""
+    switch (Ask "Select" "1") {
+        "1" { $modelsOnly = 1 }
+        "2" { }
+        default { Say "cancelled"; exit 0 }
+    }
+}
+
 $wantCapture = 1
 $wantProcess = 0
 # Processing needs CUDA, so it needs both an NVIDIA card and a working driver.
-if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
+$dRole = "1"
+if ((Prev "WANT_PROCESS" "0") -eq "1") { $dRole = if ((Prev "WANT_CAPTURE" "1") -eq "0") { "2" } else { "3" } }
+if ($modelsOnly -eq 1) {
+    $wantCapture = [int](Prev "WANT_CAPTURE" "1")
+    $wantProcess = [int](Prev "WANT_PROCESS" "0")
+} elseif ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
     Say ""
     Say "That card can do the transcription and note writing as well."
     Say ""
@@ -140,7 +203,7 @@ if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
     Say "  2) Processing only: write the notes for recordings made elsewhere"
     Say "  3) Both: record here and produce the notes here"
     Say ""
-    switch (Ask "Select" "1") {
+    switch (Ask "Select" $dRole) {
         "2" { $wantCapture = 0; $wantProcess = 1 }
         "3" { $wantProcess = 1 }
     }
@@ -155,29 +218,47 @@ if ($nvidia.Count -gt 0 -and (Have nvidia-smi)) {
 }
 
 # ---- language --------------------------------------------------------------
-Screen
-Step "Lecture language"
-Say "  1) English"
-Say "  2) Lithuanian"
-Say ""
-$lang = "en"
-if ((Ask "Select" "1") -eq "2") {
-    $lang = "lt"
+$lang = Prev "LECTURE_LANGUAGE" "en"
+$noteLang = Prev "LECTURE_NOTE_LANGUAGE" "en"
+if ($modelsOnly -eq 0) {
+    Screen
+    Step "Lecture language"
+    Say "  1) English"
+    Say "  2) Lithuanian"
     Say ""
-    Say "  Lithuanian uses a dedicated model, paprika-whisper-lt, which recognises"
-    Say "  Lithuanian word forms far better than the stock multilingual models."
-    Say "  Its output has no punctuation or capitalisation, which the summariser"
-    Say "  copes with but which makes the raw transcript harder to read."
+    $dLang = if ($lang -eq "lt") { "2" } else { "1" }
+    $lang = "en"
+    if ((Ask "Select" $dLang) -eq "2") {
+        $lang = "lt"
+        Say ""
+        Say "  Lithuanian uses a dedicated model, paprika-whisper-lt, which recognises"
+        Say "  Lithuanian word forms far better than the stock multilingual models."
+        Say "  Its output has no punctuation or capitalisation, which the summariser"
+        Say "  copes with but which makes the raw transcript harder to read."
+    }
+    $noteLang = "en"
+    if ($lang -ne "en") {
+        Say ""
+        Say "Language of the notes:"
+        Say ""
+        Say "  1) Same as the lecture"
+        Say "  2) English  [recommended]"
+        Say ""
+        if ((Ask "Select" "2") -eq "1") { $noteLang = $lang }
+    }
 }
 
 # ---- vault -----------------------------------------------------------------
 if ($lang -eq "lt") { Decided "Lithuanian" } else { Decided "English" }
-Screen
-Step "Where is your Obsidian vault"
-Say "  The folder containing .obsidian. Everything else is created inside it."
-Say "  On a borrowed machine, point this somewhere scratch."
-Say ""
-$vault = Ask "Vault path" "$HOME\Documents\ai-notes-vault"
+$vault = (Prev "VAULT" "$HOME\Documents\ai-notes-vault") -replace '/', '\'
+if ($modelsOnly -eq 0) {
+    Screen
+    Step "Where is your Obsidian vault"
+    Say "  The folder containing .obsidian. Everything else is created inside it."
+    Say "  On a borrowed machine, point this somewhere scratch."
+    Say ""
+    $vault = Ask "Vault path" $vault
+}
 $vault = $vault.TrimEnd('\')
 if (-not (Test-Path $vault)) {
     if ((Ask "$vault does not exist. Create it? (y/n)" "y") -ne "y") { exit 1 }
@@ -185,6 +266,57 @@ if (-not (Test-Path $vault)) {
 }
 $vaultFwd = $vault -replace '\\', '/'
 $scratch = "$env:LOCALAPPDATA\lecture-pipeline" -replace '\\', '/'
+
+# ---- note model ------------------------------------------------------------
+$llm = Prev "LECTURE_LLM" "gemma3:12b"
+if ($wantProcess -eq 1) {
+    $vramTotal = 0
+    $v = Quiet "nvidia-smi" @("--query-gpu=memory.total", "--format=csv,noheader,nounits")
+    if ($v.Count -gt 0 -and "$($v[0])".Trim() -match '^\d+$') { $vramTotal = [int]"$($v[0])".Trim() }
+    # Each family at the largest size whose Q4 weights fit with 1.5 GB to
+    # spare, as in install.sh. Ollama spills what does not fit to the CPU:
+    # slower, not fatal.
+    $room = $vramTotal - 1500
+    if ($room -ge 16200)    { $gemma = "gemma3:27b"; $gemmaGb = "17" }
+    elseif ($room -ge 7730) { $gemma = "gemma3:12b"; $gemmaGb = "8.1" }
+    else                    { $gemma = "gemma3:4b";  $gemmaGb = "3.3" }
+    if ($room -ge 8870) { $qwen = "qwen3:14b"; $qwenGb = "9.3" }
+    else                { $qwen = "qwen3:8b";  $qwenGb = "5.2" }
+    $llama = "llama3.1:8b"; $llamaGb = "4.9"
+
+    Screen
+    Step "Model for writing the notes"
+    Say "  Sizes are chosen for this card's $vramTotal MiB. A model slightly too"
+    Say "  large spills into system RAM and runs slower, but still works."
+    Say ""
+    Say ("  1) {0,-12} {1} GB  [recommended]" -f $gemma, $gemmaGb)
+    Say "                          Accurate, well-organised prose. Handles names,"
+    Say "                          quotes in other languages and Lithuanian well."
+    Say "                          Can smooth over small specifics."
+    if ($gemma -eq "gemma3:4b") {
+    Say "                          The 12b (8.1 GB) is too large for this card."
+    }
+    Say ("  2) {0,-12} {1} GB" -f $qwen, $qwenGb)
+    Say "                          Keeps the most specifics: numbers, dates, exact"
+    Say "                          quotes. Terser prose, more often misattributes who"
+    Say "                          said what. Thinks before writing, so it is slower."
+    Say ("  3) {0,-12} {1} GB" -f $llama, $llamaGb)
+    Say "                          Fluent English, small and fast. Summarises rather"
+    Say "                          than takes notes: drops detail and can merge"
+    Say "                          separate statements into one. English only."
+    Say "  4) Other, enter an Ollama tag yourself"
+    Say ""
+    Say "  These can be changed later by re-running this installer and choosing"
+    Say "  ""Change models only""; nothing else is touched."
+    Say ""
+    switch (Ask "Select" "1") {
+        "2" { $llm = $qwen }
+        "3" { $llm = $llama }
+        "4" { $llm = Ask "Ollama tag" $llm }
+        default { $llm = $gemma }
+    }
+    Decided "notes: $llm"
+}
 
 # ---- environment -----------------------------------------------------------
 Decided (Split-Path -Leaf $vault)
@@ -299,8 +431,52 @@ if ($wantProcess -eq 1) {
     # run every minute does not flash a console window; it logs to run.log.
     $sched = & "$Root\process\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'$Root\shared'); import platform_support as p; print(p.register_periodic('lecture-notes', [r'$Root\process\venv\Scripts\pythonw.exe', r'$Root\process\pipeline.py'], 1))"
     Say "  $sched"
-    Say "  done. Install Ollama from ollama.com and run: ollama pull qwen3:8b"
-    Say "  Then set OLLAMA_KEEP_ALIVE=30s as a user environment variable."
+
+    # ---- Ollama, as process/install.sh does on Linux ----
+    Step "Ollama and the note model"
+    if (-not (Have ollama) -and (Have winget)) {
+        Say "  installing Ollama"
+        winget install --accept-source-agreements --accept-package-agreements -e --id Ollama.Ollama | Out-Null
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") +
+                    ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    }
+    if (-not (Have ollama)) {
+        Say ""
+        Say "Ollama is not installed and could not be installed here. Install it"
+        Say "from ollama.com, then run this installer again and choose"
+        Say """Change models only""."
+        Read-Host "Press Enter to close"; exit 1
+    }
+    # Never a remote Ollama from a profile: the pipeline talks to this one.
+    $env:OLLAMA_HOST = "127.0.0.1:11434"
+    # Release the card 30 s after each summary, or the next transcription never
+    # finds free VRAM. Ollama reads this at start, so a running one restarts.
+    $env:OLLAMA_KEEP_ALIVE = "30s"
+    if ([System.Environment]::GetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "User") -ne "30s") {
+        [System.Environment]::SetEnvironmentVariable("OLLAMA_KEEP_ALIVE", "30s", "User")
+        if (OllamaUp) {
+            Say "  restarting Ollama so it releases the card between runs"
+            Get-Process -Name "ollama app", "ollama" -ErrorAction SilentlyContinue | Stop-Process -Force
+            Start-Sleep 2
+        }
+    }
+    if (-not (OllamaUp)) { StartOllama }
+    if (-not (OllamaUp)) {
+        Say ""
+        Say "Cannot reach Ollama at 127.0.0.1:11434. Start the Ollama app from the"
+        Say "Start menu, then run this installer again and choose ""Change models only""."
+        Read-Host "Press Enter to close"; exit 1
+    }
+    Say "  pulling $llm, several GB the first time"
+    $r = Native "ollama" @("pull", $llm)
+    if ($r.Code -ne 0) {
+        Say ""
+        Say "Ollama is running but '$llm' could not be pulled, so the tag is likely"
+        Say "wrong. Model names move; check ollama.com/library and run this installer"
+        Say "again, choosing Other to enter a tag yourself."
+        Read-Host "Press Enter to close"; exit 1
+    }
+    Say "  ready: $llm"
 }
 
 # ---- config ----------------------------------------------------------------
@@ -319,14 +495,14 @@ WANT_PROCESS=$wantProcess
 LECTURE_BACKEND="$backend"
 
 LECTURE_LANGUAGE="$lang"
-LECTURE_NOTE_LANGUAGE="$lang"
+LECTURE_NOTE_LANGUAGE="$noteLang"
 
 LECTURE_MODEL="$liveModel"
 LECTURE_CHUNK_SECS="$chunkSecs"
 LECTURE_WINDOW_SECS="$windowSecs"
 LECTURE_ASR_MODEL="$asrModel"
 LECTURE_ASR_COMPUTE="$asrCompute"
-LECTURE_LLM="qwen3:8b"
+LECTURE_LLM="$llm"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
 
 # ---- the document watcher: a note for a file in Files within a minute ------
