@@ -64,7 +64,8 @@ def gpu_free_mib():
     try:
         r = subprocess.run(["nvidia-smi", "--query-gpu=memory.free",
                             "--format=csv,noheader,nounits"],
-                           capture_output=True, text=True, timeout=20)
+                           capture_output=True, text=True, timeout=20,
+                           **ps.quiet_popen_kwargs())
         return int(r.stdout.strip().splitlines()[0].replace(",", ""))
     except Exception:
         return -1                       # unknown, do not block on it
@@ -227,7 +228,8 @@ def stage_refresh(NOTES, VAULT, env):
         log(f"refresh: {key}: your note changed, writing the finished note again")
         r = subprocess.run([venv_py(), str(HERE / "summarise.py"), str(transcript), key, str(VAULT)],
                            env=dict(env, LECTURE_OUT_PATH=str(note)), text=True,
-                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           **ps.quiet_popen_kwargs())
         with open(LOG, "a", encoding="utf-8") as lf:
             lf.write(r.stdout)
         log(f"refresh: {'done' if r.returncode == 0 else 'FAILED'} {key}")
@@ -289,7 +291,8 @@ def stage_transcribe(NOTES, env, free):
 
         log(f"transcribe: starting {stamp} ({free} MiB free)")
         r = subprocess.run([venv_py(), str(HERE / "transcribe.py"),
-                            str(audio), str(transcript)], env=env)
+                            str(audio), str(transcript)], env=env,
+                           **ps.quiet_popen_kwargs())
         if r.returncode == 0:
             log(f"transcribe: done {stamp}")
             size_file.unlink(missing_ok=True)
@@ -343,7 +346,8 @@ def stage_summarise(NOTES, VAULT, env):
                                  str(transcript), stamp, str(VAULT)],
                                 env=env, text=True,
                                 stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT)
+                                stderr=subprocess.STDOUT,
+                                **ps.quiet_popen_kwargs())
         with open(LOG, "a", encoding="utf-8") as lf:
             for line in proc.stdout:
                 line = line.rstrip()
@@ -363,7 +367,8 @@ def stage_summarise(NOTES, VAULT, env):
             log(f"summarise: done {stamp} -> {out}")
             fails_f.unlink(missing_ok=True)
             ra.unlink(missing_ok=True)
-            subprocess.run([venv_py(), str(HERE / "reindex.py"), str(VAULT)], env=env)
+            subprocess.run([venv_py(), str(HERE / "reindex.py"), str(VAULT)], env=env,
+                           **ps.quiet_popen_kwargs())
         else:
             fails = int(fails_f.read_text().strip() or 0) if fails_f.exists() else 0
             fails += 1
@@ -378,7 +383,8 @@ def stage_summarise(NOTES, VAULT, env):
                     d = subprocess.run(
                         [venv_py(), str(HERE / "failed_dialog.py"), stamp,
                          tail[-1] if tail else ""],
-                        capture_output=True, text=True, timeout=600)
+                        capture_output=True, text=True, timeout=600,
+                        **ps.quiet_popen_kwargs())
                     if "IGNORE" in (d.stdout or ""):
                         (STATE / f"{stamp}.ignored").touch()
                         log(f"ignoring {stamp} from now on")

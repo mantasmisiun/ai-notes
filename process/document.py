@@ -30,6 +30,10 @@ import sys
 import time
 from pathlib import Path
 
+# Windows opens a console window for every console child of pythonw, which
+# flashed up every minute under the scheduled task.
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / "shared"))
@@ -63,7 +67,7 @@ def pages_of(path):
         raw = None
         if shutil.which("pdftotext"):
             r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"],
-                               capture_output=True, text=True, timeout=300)
+                               capture_output=True, text=True, timeout=300, **NO_WINDOW)
             raw = r.stdout if r.returncode == 0 else None
         if raw is None:
             try:

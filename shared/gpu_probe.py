@@ -17,6 +17,10 @@ import re
 import subprocess
 import sys
 
+# Windows opens a console window for every console child of pythonw, which
+# flashed up every minute under the scheduled task.
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+
 HEAP_SIZE = re.compile(r"size\s+=\s+(\d+)")
 
 
@@ -24,7 +28,7 @@ def from_nvidia_smi():
     try:
         r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,memory.free",
                             "--format=csv,noheader,nounits"],
-                           capture_output=True, text=True, timeout=20)
+                           capture_output=True, text=True, timeout=20, **NO_WINDOW)
         if r.returncode != 0 or not r.stdout.strip():
             return None
         best = None
@@ -41,7 +45,7 @@ def from_nvidia_smi():
 def from_vulkaninfo():
     try:
         out = subprocess.run(["vulkaninfo"], capture_output=True,
-                             text=True, timeout=40).stdout
+                             text=True, timeout=40, **NO_WINDOW).stdout
     except Exception:
         return None
     if not out:

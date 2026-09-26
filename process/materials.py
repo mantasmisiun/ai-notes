@@ -20,10 +20,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from urllib.parse import unquote
 from xml.etree import ElementTree as ET
+
+# Windows opens a console window for every console child of pythonw, which
+# flashed up every minute under the scheduled task.
+NO_WINDOW = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
 
 EXTS = (".pdf", ".docx", ".pptx", ".xlsx", ".md")
 LINK_RE = re.compile(r"!?\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]|\[[^\]]*\]\(([^)\s]+)\)")
@@ -100,7 +105,7 @@ def extract(path):
         if ext == ".pdf":
             if shutil.which("pdftotext"):
                 r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"],
-                                   capture_output=True, text=True, timeout=120)
+                                   capture_output=True, text=True, timeout=120, **NO_WINDOW)
                 return r.stdout.strip() if r.returncode == 0 else ""
             from pypdf import PdfReader
             return "\n\n".join((pg.extract_text() or "") for pg in PdfReader(str(path)).pages).strip()
