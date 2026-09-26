@@ -105,7 +105,8 @@ def extract(path):
         if ext == ".pdf":
             if shutil.which("pdftotext"):
                 r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"],
-                                   capture_output=True, text=True, timeout=120, **NO_WINDOW)
+                                   capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=120, **NO_WINDOW)
                 return r.stdout.strip() if r.returncode == 0 else ""
             from pypdf import PdfReader
             return "\n\n".join((pg.extract_text() or "") for pg in PdfReader(str(path)).pages).strip()

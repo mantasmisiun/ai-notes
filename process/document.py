@@ -67,7 +67,8 @@ def pages_of(path):
         raw = None
         if shutil.which("pdftotext"):
             r = subprocess.run(["pdftotext", "-enc", "UTF-8", str(path), "-"],
-                               capture_output=True, text=True, timeout=300, **NO_WINDOW)
+                               capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=300, **NO_WINDOW)
             raw = r.stdout if r.returncode == 0 else None
         if raw is None:
             try:

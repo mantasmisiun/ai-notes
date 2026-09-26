@@ -114,6 +114,11 @@ def main():
         # every run right after the layout step, with the traceback in the
         # journal and nothing in run.log.
         env = dict(os.environ)
+        # Children print Lithuanian text. On Windows a piped stdout defaults
+        # to cp1252, where 'į' does not exist, and summarise.py died on its
+        # first print. UTF-8 both ways: set here, decoded as such below.
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
         env.update({k: v for k, v in cfg.items() if k.startswith("LECTURE_")})
         for k, v in (("LECTURE_LANGUAGE", "en"), ("LECTURE_NOTE_LANGUAGE", "en"),
                      ("LECTURE_ASR_MODEL", "large-v3"), ("LECTURE_ASR_COMPUTE", "float16"),
@@ -227,7 +232,7 @@ def stage_refresh(NOTES, VAULT, env):
             continue
         log(f"refresh: {key}: your note changed, writing the finished note again")
         r = subprocess.run([venv_py(), str(HERE / "summarise.py"), str(transcript), key, str(VAULT)],
-                           env=dict(env, LECTURE_OUT_PATH=str(note)), text=True,
+                           env=dict(env, LECTURE_OUT_PATH=str(note)), text=True, encoding="utf-8", errors="replace",
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            **ps.quiet_popen_kwargs())
         with open(LOG, "a", encoding="utf-8") as lf:
@@ -344,7 +349,7 @@ def stage_summarise(NOTES, VAULT, env):
         out, tail = "", []
         proc = subprocess.Popen([venv_py(), str(HERE / "summarise.py"),
                                  str(transcript), stamp, str(VAULT)],
-                                env=env, text=True,
+                                env=env, text=True, encoding="utf-8", errors="replace",
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
                                 **ps.quiet_popen_kwargs())
@@ -383,7 +388,7 @@ def stage_summarise(NOTES, VAULT, env):
                     d = subprocess.run(
                         [venv_py(), str(HERE / "failed_dialog.py"), stamp,
                          tail[-1] if tail else ""],
-                        capture_output=True, text=True, timeout=600,
+                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
                         **ps.quiet_popen_kwargs())
                     if "IGNORE" in (d.stdout or ""):
                         (STATE / f"{stamp}.ignored").touch()
