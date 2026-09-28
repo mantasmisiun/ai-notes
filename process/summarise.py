@@ -5,7 +5,7 @@ Two passes over the transcript because a lecture is far longer than the model's
 context window, then a short third call for a topic to name the file with.
 Prints the path it wrote, which run.sh records as the completion marker.
 """
-import json, os, re, sys, threading, time, urllib.request, datetime
+import json, os, re, sys, threading, time, urllib.error, urllib.request, datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "..", "shared"))
@@ -82,6 +82,14 @@ def ask(prompt, predict=None):
                 out.append(chunk.get("response", ""))
                 if chunk.get("done"):
                     break
+    except urllib.error.HTTPError as e:
+        # Ollama puts the reason in the body ("model requires more system
+        # memory", "model not found"); urllib's own message is only "500".
+        try:
+            detail = json.loads(e.read().decode("utf-8", "replace")).get("error", "")
+        except Exception:
+            detail = ""
+        raise SystemExit(f"Ollama answered {e.code} for {MODEL}: {detail or e.reason}")
     except TimeoutError:
         raise SystemExit(
             f"gave up after {REQUEST_DEADLINE // 60} minutes on one chunk with {MODEL}.\n"
