@@ -105,6 +105,12 @@ def fetch_ct2(d, want, repo=REPO_CT2):
 
 
 def main():
+    # The Windows installer reads this through a pipe, where Python writes
+    # cp1252, which has no Ą: the first line, "Downloading Ąžuolas", raised
+    # and was reported as a failed download. Messages are ASCII, and anything
+    # else (an error quoting a Lithuanian path) is replaced, never fatal.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     wcpp = sys.argv[sys.argv.index("--wcpp") + 1] if "--wcpp" in sys.argv else ""
     if wcpp in args:
@@ -133,7 +139,7 @@ def main():
     try:
         if not ready(out) or (want == "float16" and variant(out) != "float16"):
             size = "2.9" if want == "float16" else "1.5"
-            print(f"Downloading Ąžuolas, the Lithuanian model ({want}, {size} GB). Once only.",
+            print(f"Downloading Azuolas, the Lithuanian model ({want}, {size} GB). Once only.",
                   flush=True)
             fetch_ct2(out, want)
         if wcpp:
