@@ -9,6 +9,7 @@ nothing is converted here: this replaced a throwaway torch environment that
 turned paprika-whisper-lt into both formats on every new machine.
 
     fetch_lt_model.py <cache root> [--float16] [--wcpp <whisper.cpp root>]
+    fetch_lt_model.py <cache root> --model paprika
 
 The faster-whisper build comes in two precisions. int8_float16 (1.5 GB) is the
 default: its author measured it 0.08 WER points behind float16 on FLEURS and
@@ -20,6 +21,13 @@ With --wcpp it also fetches the whisper.cpp build (q4_0, 0.85 GB, 0.1 WER
 points behind q8_0 by its author's measure, and the fastest on an integrated
 GPU) and the Silero VAD model. This model writes fluent Lithuanian over
 silence, so whisper.cpp must never run it without VAD.
+
+--model paprika fetches the live fallback instead: paprika-whisper-lt-v3, a
+large-v3-turbo fine-tune with 4 decoder layers to Ąžuolas's 32, so about three
+times faster (100x against 34x real time on an RTX 3080) and less accurate
+(12.06% on FLEURS). A machine whose card cannot run Ąžuolas live gets live text
+from it instead of audio only. Its author publishes transformers weights only;
+this is RobertasTa's int8 CTranslate2 conversion of them (0.8 GB, CC BY 4.0).
 
 Prints the model directory on success, as the last line.
 """
@@ -44,8 +52,12 @@ def hub(repo, path):
     return f"https://huggingface.co/{repo}/resolve/main/{path}"
 
 
-def model_dir(cache_root):
-    return Path(cache_root) / "models" / "azuolas-whisper-lt-ct2"
+REPO_FALLBACK = "RobertasTa/paprika-whisper-lt-v3-ct2-int8"
+
+
+def model_dir(cache_root, name="azuolas"):
+    d = "paprika-whisper-lt-v3-ct2" if name == "paprika" else "azuolas-whisper-lt-ct2"
+    return Path(cache_root) / "models" / d
 
 
 def variant(d):
@@ -85,10 +97,10 @@ def download(url, dest):
     os.replace(part, dest)
 
 
-def fetch_ct2(d, want):
-    prefix = "" if want == "float16" else "int8_float16/"
+def fetch_ct2(d, want, repo=REPO_CT2):
+    prefix = "" if want == "float16" or repo != REPO_CT2 else "int8_float16/"
     for f in CT2_FILES:
-        download(hub(REPO_CT2, prefix + f), d / f)
+        download(hub(repo, prefix + f), d / f)
     (d / VARIANT_FILE).write_text(want, encoding="utf-8")
 
 
@@ -97,9 +109,24 @@ def main():
     wcpp = sys.argv[sys.argv.index("--wcpp") + 1] if "--wcpp" in sys.argv else ""
     if wcpp in args:
         args.remove(wcpp)
+    name = sys.argv[sys.argv.index("--model") + 1] if "--model" in sys.argv else "azuolas"
+    if name in args:
+        args.remove(name)
     cache = Path(args[0]) if args else Path.home() / ".cache" / "lecture-pipeline"
     want = "float16" if "--float16" in sys.argv else "int8_float16"
-    out = model_dir(cache)
+    out = model_dir(cache, name)
+
+    if name == "paprika":                      # int8 is the only build there is
+        try:
+            if not ready(out):
+                print("Downloading paprika-whisper-lt-v3, the fast live fallback (0.8 GB).",
+                      flush=True)
+                fetch_ct2(out, "int8_float16", REPO_FALLBACK)
+        except Exception as e:
+            print(f"could not download the fallback model: {e}", flush=True)
+            return 1
+        print(out)
+        return 0
 
     # print, not stderr: PowerShell treats a native program's stderr as an
     # error when its preference is Stop, and aborted the installer on it

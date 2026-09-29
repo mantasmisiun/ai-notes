@@ -194,6 +194,13 @@ if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
     exit 1
   fi
   say "  ready: $LT_MODEL"
+  # The live fallback: a card that cannot run Ąžuolas live gets paprika-v3's
+  # live text rather than none. Not fatal if it fails; audio only remains.
+  LT_FALLBACK=""
+  if [ "$want_capture" = 1 ]; then
+    LT_FALLBACK="$(python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" --model paprika 2>&1 | tail -1)"
+    [ -d "$LT_FALLBACK" ] && say "  live fallback: $LT_FALLBACK" || LT_FALLBACK=""
+  fi
   say
 fi
 
@@ -216,7 +223,8 @@ choose_live_model() {                       # sets FIXED; "" lets the ladder pic
   say "Live transcription model:"; say
   if [ "$lang" = "lt" ]; then
     say "  1) Ąžuolas  [recommended]  by far the best Lithuanian; a large model, so"
-    say "                             it needs a GPU (a Vulkan iGPU just keeps up)"
+    say "                             it needs a GPU (a Vulkan iGPU just keeps up)."
+    say "                             Falls back to paprika-v3 if it cannot keep up"
     say "  2) small                   fast, weak Lithuanian"
     say "  3) medium                  between the two"
     say "  4) large-v3                stock multilingual, as slow as Ąžuolas and worse"
@@ -236,7 +244,7 @@ choose_live_model() {                       # sets FIXED; "" lets the ladder pic
     3) FIXED="medium${en_suffix}" ;;
     4) FIXED="large-v3" ;;
     5) FIXED="$(ask "Model" "small${en_suffix}")" ;;
-    *) if [ "$lang" = "lt" ]; then FIXED="$LT_MODEL"; else FIXED=""; fi ;;
+    *) if [ "$lang" = "lt" ]; then FIXED="$LT_MODEL${LT_FALLBACK:+|$LT_FALLBACK}"; else FIXED=""; fi ;;
   esac
   screen
 }
@@ -302,7 +310,7 @@ if [ "$want_capture" = 1 ]; then
       say
       [ "$backend" != "none" ] && break
 
-      if [ -n "$FIXED" ]; then say "$(basename "$FIXED") cannot keep up with live speech on this machine."
+      if [ -n "$FIXED" ]; then say "$(basename "${FIXED%%|*}")${LT_FALLBACK:+ and paprika-v3} cannot keep up with live speech on this machine."
       else say "No model keeps up with live speech on this machine."; fi
       say
       say "  1) Pick another model"

@@ -231,8 +231,12 @@ FIXED = os.environ.get("LECTURE_FIXED_MODEL", "")
 if FIXED:
     # Some languages have one obviously right model and no useful choice. It is
     # still measured, because whether it keeps up is a property of the machine.
-    ladder = [FIXED]
-    print(f"  using {os.path.basename(FIXED)}, the model for this language\n")
+    # Several may be given, best first and separated by "|" (a Windows path
+    # has a colon): Lithuanian offers Ąžuolas, then the faster paprika-v3, so a
+    # card too slow for the first still gets live text.
+    ladder = [m for m in FIXED.split("|") if m]
+    print(f"  using {', '.join(label(m) for m in ladder)}, the model"
+          f"{'s' if len(ladder) > 1 else ''} for this language, in that order\n")
 else:
     # The gate is free VRAM on a discrete card, not its total size. large-v3 at
     # int8_float16 peaks near 3 GB, so 4 GB free holds it. A laptop whose
@@ -314,7 +318,8 @@ if chosen and chosen in results:
     best = chosen
     why = f"first model clearing {GOOD_ENOUGH}x"
 else:
-    order = {"large-v3": 3, f"medium{suffix}": 2, f"small{suffix}": 1}
+    order = ({m: len(ladder) - i for i, m in enumerate(ladder)} if FIXED
+             else {"large-v3": 3, f"medium{suffix}": 2, f"small{suffix}": 1})
     best = max(viable, key=lambda r: (order.get(r[0], 0), r[2]))
     why = ("the model for this language" if FIXED
                else "largest model that keeps up")

@@ -30,9 +30,11 @@ def candidates(cfg):
     suffix = ".en" if lang == "en" else ""
     names = [f"large-v3", f"medium{suffix}", f"small{suffix}", f"base{suffix}"]
     if lang == "lt":
-        # Ąžuolas first; paprika only on a machine not yet reinstalled onto it
+        # Ąžuolas first, then its faster live fallback; paprika v1 only on a
+        # machine not yet reinstalled onto them
         models = Path(cfg.get("AUDIO_SCRATCH", str(ps.scratch_dir()))) / "models"
-        for d in reversed(("azuolas-whisper-lt-ct2", "paprika-whisper-lt-ct2")):
+        for d in reversed(("azuolas-whisper-lt-ct2", "paprika-whisper-lt-v3-ct2",
+                           "paprika-whisper-lt-ct2")):
             if (models / d).exists():
                 names.insert(0, str(models / d))
     disabled = {d for d in cfg.get("LECTURE_DISABLED_MODELS", "").split(",") if d}

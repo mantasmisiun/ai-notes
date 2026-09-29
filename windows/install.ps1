@@ -363,6 +363,14 @@ if ($lang -eq "lt") {
         Read-Host "Press Enter to close"; exit 1
     }
     Say "  ready: $ltModel"
+    # The live fallback: a card that cannot run Azuolas live gets paprika-v3's
+    # live text rather than none. Not fatal if it fails; audio only remains.
+    $ltFallback = ""
+    if ($wantCapture -eq 1) {
+        $r = Native "python" @("$Root\lib\fetch_lt_model.py", "$env:LOCALAPPDATA\lecture-pipeline", "--model", "paprika")
+        $f = if ($r.Lines.Count -gt 0) { ($r.Lines | Select-Object -Last 1).Trim() } else { "" }
+        if ($r.Code -eq 0 -and $f -and (Test-Path $f)) { $ltFallback = $f; Say "  live fallback: $ltFallback" }
+    }
 }
 
 # The benchmark picks the live model, so a machine that only processes skips it.
@@ -388,7 +396,8 @@ if ($wantCapture -eq 1) {
     $env:VRAM_MIB = "$vram"
     $env:VRAM_FREE_MIB = if ($parts.Count -ge 5) { $parts[4] } else { "$vram" }
     $env:MIN_LIVE_FACTOR = "1.2"
-    $env:LECTURE_FIXED_MODEL = "$ltModel"
+    # best first, "|" between them: Azuolas, then paprika-v3 if it cannot keep up
+    $env:LECTURE_FIXED_MODEL = if ($ltFallback) { "$ltModel|$ltFallback" } else { "$ltModel" }
 
     # Stream rather than capture. Collecting the output first means nothing
     # appears until the whole benchmark finishes, which on a slow machine with
