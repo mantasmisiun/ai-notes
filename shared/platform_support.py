@@ -97,7 +97,8 @@ def default_input_device():
     if not name:
         r = subprocess.run(["ffmpeg", "-hide_banner", "-list_devices", "true",
                             "-f", "dshow", "-i", "dummy"],
-                           capture_output=True, encoding="utf-8", errors="replace")
+                           capture_output=True, encoding="utf-8", errors="replace",
+                           **quiet_popen_kwargs())
         for line in (r.stderr or "").splitlines():
             if "(audio)" in line and '"' in line:
                 name = line.split('"')[1]
@@ -180,11 +181,11 @@ def notify(title, body="", replace_id=None):
             subprocess.run(["osascript", "-e",
                             f'display notification "{body}" with title "{title}"'],
                            capture_output=True)
-        elif WINDOWS:
-            ps = (f'[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications,'
-                  f' ContentType=WindowsRuntime] > $null; Write-Host "{title}: {body}"')
-            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
-                           capture_output=True)
+        # Nothing on Windows. The PowerShell call that stood here loaded the
+        # toast class and showed no toast, flashed a console at every start and
+        # stop, and ran before the recording window opened: PowerShell's first
+        # start after a reboot held that window back by seconds. The recording
+        # window is the notification there.
     except Exception:
         pass
     return None
