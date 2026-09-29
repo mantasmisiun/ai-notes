@@ -231,10 +231,11 @@ if ($modelsOnly -eq 0) {
     if ((Ask "Select" $dLang) -eq "2") {
         $lang = "lt"
         Say ""
-        Say "  Lithuanian uses a dedicated model, paprika-whisper-lt, which recognises"
-        Say "  Lithuanian word forms far better than the stock multilingual models."
-        Say "  Its output has no punctuation or capitalisation, which the summariser"
-        Say "  copes with but which makes the raw transcript harder to read."
+        Say "  Lithuanian uses a dedicated model, Azuolas (akisviete/azuolas-whisper-lt),"
+        Say "  trained on about 9,800 hours of Lithuanian. It recognises word forms and"
+        Say "  legal and technical terms far better than any other model tested. Its"
+        Say "  output has no punctuation or capitalisation, which the summariser copes"
+        Say "  with but which makes the raw transcript harder to read."
     }
     $noteLang = "en"
     if ($lang -ne "en") {
@@ -344,15 +345,17 @@ if ($nvidia.Count -gt 0) {
 }
 Say "  done"
 
-# Lithuanian has one model worth using. No published CTranslate2 build exists,
-# so it is converted once into the cache with a throwaway toolchain that is
-# deleted afterwards. The venv-relative paths in fetch_lt_model.py cover
-# Windows, so this is the same step the Linux installer runs.
+# Lithuanian has one model worth using, Azuolas, downloaded ready-made: the
+# same step the Linux installer runs. float16 (2.9 GB) for a processing card
+# with 6 GB or more, where the accurate pass wants the precision; int8 (1.5 GB)
+# otherwise, which fits a 4 GB laptop card and which its author measured only
+# 0.08 WER points behind.
 $ltModel = ""
 if ($lang -eq "lt") {
     Step "Preparing the Lithuanian model"
-    Say "  Converting paprika-whisper-lt. This happens once and takes a few minutes."
-    $r = Native "python" @("$Root\lib\fetch_lt_model.py", "$env:LOCALAPPDATA\lecture-pipeline")
+    $ltArgs = @("$Root\lib\fetch_lt_model.py", "$env:LOCALAPPDATA\lecture-pipeline")
+    if ($wantProcess -eq 1 -and $vramTotal -ge 6000) { $ltArgs += "--float16" }
+    $r = Native "python" $ltArgs
     $ltModel = if ($r.Lines.Count -gt 0) { ($r.Lines | Select-Object -Last 1).Trim() } else { "" }
     if ($r.Code -ne 0 -or -not (Test-Path $ltModel)) {
         Say ""
@@ -482,8 +485,15 @@ if ($wantProcess -eq 1) {
 }
 
 # ---- config ----------------------------------------------------------------
-$asrModel = "large-v3"; $asrCompute = "float16"
-if ($ltModel) { $asrModel = ($ltModel -replace '\\', '/'); $asrCompute = "int8" }
+# Azuolas is a full large-v3, so float16 needs the same 6 GB as stock large-v3.
+# Its author found 22-second pieces cut at silences about 4 WER points better
+# than one long pass, so Lithuanian is transcribed that way.
+$asrModel = "large-v3"; $asrCompute = "float16"; $asrChunk = 0
+if ($ltModel) {
+    $asrModel = ($ltModel -replace '\\', '/')
+    $asrCompute = if ($vramTotal -ge 6000) { "float16" } else { "int8_float16" }
+    $asrChunk = 22
+}
 Step "Saving your choices"
 @"
 # Written by windows/install.ps1. Paths and model choices, no secrets.
@@ -504,6 +514,7 @@ LECTURE_CHUNK_SECS="$chunkSecs"
 LECTURE_WINDOW_SECS="$windowSecs"
 LECTURE_ASR_MODEL="$asrModel"
 LECTURE_ASR_COMPUTE="$asrCompute"
+LECTURE_ASR_CHUNK_SECS="$asrChunk"
 LECTURE_LLM="$llm"
 "@ | Set-Content -Encoding UTF8 "$Root\config.sh"
 

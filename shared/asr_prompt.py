@@ -4,7 +4,7 @@ lecture's language, given to Whisper as hotwords so every window sees it.
 
 A stock multilingual model that sees punctuated text keeps punctuating
 consistently instead of drifting in and out of it. A fine-tune that emits no
-punctuation, such as paprika-whisper-lt, gains nothing from one, so a model
+punctuation, such as Ąžuolas (azuolas-whisper-lt), gains nothing from one, so a model
 given as a directory gets none. LECTURE_INITIAL_PROMPT overrides both."""
 import os
 

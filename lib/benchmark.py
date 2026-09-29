@@ -153,9 +153,9 @@ def time_faster_whisper(model, device):
 
 
 def ggml_file(model):
-    """A stock model maps to whisper.cpp's download name; a converted
-    directory such as paprika-whisper-lt-ct2 maps to the GGML the Lithuanian
-    step produced beside it, ggml-paprika-whisper-lt.bin."""
+    """A stock model maps to whisper.cpp's download name; a model
+    directory such as azuolas-whisper-lt-ct2 maps to the GGML the Lithuanian
+    step downloaded beside it, ggml-azuolas-whisper-lt.bin."""
     name = os.path.basename(model.rstrip("/")) if os.path.isdir(model) else model
     if name.endswith("-ct2"):
         name = name[:-4]
@@ -170,9 +170,16 @@ def time_whisper_cpp(model):
                            cwd=wcpp, check=True, capture_output=True)
     t0 = time.perf_counter()
     sp = Spinner(f"benchmarking {label(model)} on vulkan"); sp.__enter__()
+    # The flags the live worker passes, or the measurement is of something
+    # else: greedy decoding, word-sized segments, and VAD when its model is
+    # there. whisper-cli's default beam of five made every pass half again
+    # as slow as the worker's.
+    vad = os.path.join(wcpp, "models", "ggml-silero-v6.2.0.bin")
+    extra = ["--vad", "-vm", vad, "-vsd", "500"] if os.path.exists(vad) else []
     r = subprocess.run([os.path.join(wcpp, "build/bin/whisper-cli"),
                         "-m", ggml, "-l", lang, "-f", wav, "-t", str(os.cpu_count() or 4),
-                        "-otxt", "-of", os.path.join(work, "bench")],
+                        "-bs", "1", "-bo", "1", "-ml", "1", "-sow",
+                        "-otxt", "-of", os.path.join(work, "bench"), *extra],
                        capture_output=True, text=True,
                        # its libraries sit beside the binary; the build's RPATH
                        # pointed into a build directory that no longer existed
@@ -195,8 +202,8 @@ def label(model):
 def candidates(model):
     out = []
     if os.path.isdir(model):
-        # A converted CTranslate2 directory. whisper.cpp needs its own GGML
-        # format, which the Lithuanian step produces when whisper.cpp is
+        # A CTranslate2 model directory. whisper.cpp needs its own GGML
+        # format, which the Lithuanian step downloads when whisper.cpp is
         # built; Vulkan is offered when that file exists.
         if has_cuda:
             out.append(("cuda", lambda m=model: time_faster_whisper(m, "cuda")))

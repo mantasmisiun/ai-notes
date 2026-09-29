@@ -189,8 +189,8 @@ class WhisperCppBackend:
 
     def __init__(self, scratch):
         self.cli  = WCPP / "build" / "bin" / "whisper-cli"
-        # a converted directory such as paprika-whisper-lt-ct2 has its GGML
-        # twin beside whisper.cpp's other models, ggml-paprika-whisper-lt.bin
+        # a model directory such as azuolas-whisper-lt-ct2 has its GGML twin
+        # beside whisper.cpp's other models, ggml-azuolas-whisper-lt.bin
         name = os.path.basename(MODEL.rstrip("/")) if os.path.isdir(MODEL) else MODEL
         name = name[:-4] if name.endswith("-ct2") else name
         self.ggml = WCPP / "models" / f"ggml-{name}.bin"
@@ -209,6 +209,17 @@ class WhisperCppBackend:
                             + os.environ.get("LD_LIBRARY_PATH", ""))
         # the window goes through a WAV on disk, in the scratch directory, never
         # in /tmp, which on this laptop is a RAM disk
+        # Greedy unless told otherwise, as on the other backends. whisper-cli
+        # defaults to a beam of five, which the benchmark never measured:
+        # Ąžuolas on this laptop's iGPU took 18.7 s per 30 s window with it and
+        # 12.0 s without, for the same words. VAD whenever the model is here:
+        # Ąžuolas writes fluent Lithuanian over silence without it.
+        vad = WCPP / "models" / "ggml-silero-v6.2.0.bin"
+        self.extra = ["-bs", str(BEAM), "-bo", str(BEAM)]
+        if vad.is_file():
+            self.extra += ["--vad", "-vm", str(vad), "-vsd", "500"]
+        else:
+            log("no Silero VAD model for whisper.cpp; silence may be transcribed as words")
         self.wav  = Path(scratch) / f".live-{os.getpid()}.wav"
         self.base = Path(scratch) / f".live-{os.getpid()}"
         self.first = True
@@ -219,7 +230,8 @@ class WhisperCppBackend:
             w.writeframes(buf_bytes)
         r = subprocess.run([str(self.cli), "-m", str(self.ggml), "-l", LANGUAGE,
                             "-t", str(THREADS), "-f", str(self.wav),
-                            "-ml", "1", "-sow", "-oj", "-of", str(self.base), "-np"],
+                            "-ml", "1", "-sow", "-oj", "-of", str(self.base), "-np",
+                            *self.extra],
                            capture_output=True, text=True, env=self.libpath, **_quiet())
         if self.first:
             self.first = False
@@ -470,9 +482,18 @@ def main():
                 log(f"vulkan backend unavailable ({e}); falling back to faster-whisper on cpu")
                 append("*whisper.cpp is not available here; running on the CPU instead.*\n")
         if backend is None:
-            backend = CT2Backend()
-        log(f"model loaded on {backend.name}")
-        append("*ready, recording*\n\n")
+            try:
+                backend = CT2Backend()
+            except Exception as e:
+                # No model means no live text, never no recording: the reader
+                # thread is already writing audio, and this used to end the
+                # worker before the audio was ever converted.
+                log(f"no live model could be loaded ({e}); recording audio only")
+                append("*The live model could not be loaded; recording audio only. "
+                       "The transcript and notes are produced afterwards.*\n\n")
+        if backend is not None:
+            log(f"model loaded on {backend.name}")
+            append("*ready, recording*\n\n")
     ready = os.environ.get("LECTURE_READY_FILE", "")
     if ready:
         try:

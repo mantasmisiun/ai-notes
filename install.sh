@@ -45,6 +45,7 @@ LECTURE_CHUNK_SECS="${chunk_secs:-12}"
 LECTURE_WINDOW_SECS="${window_secs:-30}"
 LECTURE_ASR_MODEL="${asr_model:-}"
 LECTURE_ASR_COMPUTE="${asr_compute:-}"
+LECTURE_ASR_CHUNK_SECS="${asr_chunk:-0}"
 LECTURE_LLM="${llm:-}"
 CONF
 }
@@ -171,18 +172,22 @@ say
 
 # Lithuanian has one model worth using. The stock multilingual ones mangle word
 # endings badly enough that the transcript is hard to read, so there is no
-# choice to offer: it is prepared and used for both passes.
+# choice to offer: it is downloaded and used for both passes. float16 on a card
+# with room for it, int8 elsewhere, which its author measured 0.08 WER points
+# behind.
 decided "$(basename "$vault")"
 screen
 
 LT_MODEL=""
 if [ "$lang" = "lt" ] && [ "$want_capture" = 1 -o "$want_process" = 1 ]; then
-  say "Lithuanian uses a dedicated model, paprika-whisper-lt. It recognises"
-  say "Lithuanian word forms far better than the stock multilingual models."
-  say "Its output has no punctuation or capitalisation, which the summariser"
-  say "copes with but which makes the raw transcript harder to read."
+  say "Lithuanian uses a dedicated model, Ąžuolas (akisviete/azuolas-whisper-lt),"
+  say "trained on about 9,800 hours of Lithuanian. It recognises word forms and"
+  say "legal and technical terms far better than any other model tested. Its"
+  say "output has no punctuation or capitalisation, which the summariser copes"
+  say "with but which makes the raw transcript harder to read."
   say
-  LT_MODEL="$(python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" 2>&1 | tail -1)"
+  lt_prec=""; [ "$HAS_CUDA" = 1 ] && [ "$VRAM_MIB" -ge 6000 ] && lt_prec="--float16"
+  LT_MODEL="$(python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" $lt_prec 2>&1 | tail -1)"
   if [ ! -d "$LT_MODEL" ]; then
     say "could not prepare the Lithuanian model:"
     say "  $LT_MODEL"
@@ -210,11 +215,11 @@ LAYOUT
 choose_live_model() {                       # sets FIXED; "" lets the ladder pick
   say "Live transcription model:"; say
   if [ "$lang" = "lt" ]; then
-    say "  1) paprika-whisper-lt  [recommended]  by far the best Lithuanian; a large"
-    say "                                         model, so slow without a real GPU"
-    say "  2) small                              fast, weak Lithuanian"
-    say "  3) medium                             between the two"
-    say "  4) large-v3                           stock multilingual, as slow as paprika"
+    say "  1) Ąžuolas  [recommended]  by far the best Lithuanian; a large model, so"
+    say "                             it needs a GPU (a Vulkan iGPU just keeps up)"
+    say "  2) small                   fast, weak Lithuanian"
+    say "  3) medium                  between the two"
+    say "  4) large-v3                stock multilingual, as slow as Ąžuolas and worse"
     say "  5) Other, enter a model name yourself"
   else
     say "  1) Let the benchmark pick  [recommended]  the largest model that keeps up"
@@ -270,11 +275,12 @@ if [ "$want_capture" = 1 ]; then
 
     say "--- preparing to benchmark this machine ---"
     BUILD_VULKAN=$build_vulkan HAS_CUDA=$HAS_CUDA "$ROOT/capture/install.sh" --prereqs
-    # whisper.cpp exists only now, so the Lithuanian model's GGML twin is made
-    # here; without it Vulkan was never measured for Lithuanian
+    # whisper.cpp exists only now, so the Lithuanian model's GGML twin and the
+    # VAD model it must never run without are fetched here; without them
+    # Vulkan was never measured for Lithuanian
     if [ "$build_vulkan" = 1 ] && [ -n "$LT_MODEL" ]; then
       python3 "$ROOT/lib/fetch_lt_model.py" "$DEFAULT_SCRATCH" --wcpp "$ROOT/capture/whisper.cpp" 2>&1 | tail -1 >/dev/null
-      [ -f "$ROOT/capture/whisper.cpp/models/ggml-paprika-whisper-lt.bin" ] && say "  Lithuanian model ready for Vulkan too"
+      [ -f "$ROOT/capture/whisper.cpp/models/ggml-azuolas-whisper-lt.bin" ] && say "  Lithuanian model ready for Vulkan too"
     fi
     say
     wcpp=""; [ "$build_vulkan" = 1 ] && wcpp="$ROOT/capture/whisper.cpp"
@@ -328,14 +334,18 @@ fi
 if [ "$want_process" = 1 ]; then
   # The Lithuanian model in float16 where the card allows it: int8 on an
   # Ampere card is neither faster nor more precise, and the accurate pass is
-  # the one place precision is the point.
-  if   [ -n "$LT_MODEL" ] && [ "$VRAM_MIB" -ge 4000 ]; then asr_model="$LT_MODEL"; asr_compute=float16
+  # the one place precision is the point. Ąžuolas is a full large-v3, so it
+  # needs the same 6 GB as stock large-v3 in float16. Its author found
+  # 22-second pieces cut at silences about 4 WER points better than one
+  # long pass, so Lithuanian is transcribed that way.
+  if   [ -n "$LT_MODEL" ] && [ "$VRAM_MIB" -ge 6000 ]; then asr_model="$LT_MODEL"; asr_compute=float16
   elif [ -n "$LT_MODEL" ];       then asr_model="$LT_MODEL"; asr_compute=int8_float16
   elif [ "$VRAM_MIB" -ge 6000 ]; then asr_model=large-v3; asr_compute=float16
   elif [ "$VRAM_MIB" -ge 4000 ]; then asr_model=large-v3; asr_compute=int8_float16
   else                                asr_model=medium;   asr_compute=int8_float16
   fi
-  say "Accurate transcription model: $asr_model ($asr_compute)"
+  asr_chunk=0; [ -n "$LT_MODEL" ] && asr_chunk=22
+  say "Accurate transcription model: $(basename "$asr_model") ($asr_compute)"
   say "  Nothing waits on this stage, so the largest model that fits is used."
   say
 

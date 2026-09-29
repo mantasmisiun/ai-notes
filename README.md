@@ -43,6 +43,8 @@ real time:
 | English, medium | 2.7x CPU / 2.9x Vulkan | |
 | Lithuanian, small | 3.6x CPU / 4.3x Vulkan | |
 | Lithuanian, medium | 1.7x CPU / 1.6x Vulkan | |
+| Lithuanian, Ąžuolas, live | 2.5x Vulkan (q4_0, greedy, VAD) | |
+| Lithuanian, Ąžuolas, batch | | 34x (int8) |
 | English, large-v3, batch | | 27x |
 | Summarising 10,000 words | | 31 s |
 
@@ -53,6 +55,26 @@ costs roughly 2.4x more compute than English at the same model size, so a
 machine benchmarked in English can fail in Lithuanian. And Vulkan on an
 integrated GPU did not beat the CPU on any combination measured here, despite
 being the obvious candidate.
+
+## The Lithuanian model
+
+Lithuanian uses [Ąžuolas](https://huggingface.co/akisviete/azuolas-whisper-lt),
+a whisper-large-v3 fine-tune trained on about 9,800 hours of Lithuanian, by
+akisviete, under CC BY 4.0. It replaced paprika-whisper-lt after a side-by-side
+run on a quiet law lecture recorded from across the room: it was the only model
+whose output read as coherent legal sentences, and on FLEURS it scores 9.05%
+word error rate against 12.06% for paprika-whisper-lt-v3. Its author publishes
+ready builds, so the installer downloads rather than converts: float16 (2.9 GB)
+for a processing card with 6 GB or more, int8 (1.5 GB) otherwise, and a q4_0
+whisper.cpp build (0.85 GB) where Vulkan runs the live pass.
+
+Three things it needs, all set by the installer. VAD always, on both passes:
+without it the model writes fluent Lithuanian over silence. The accurate pass
+cut into pieces of at most 22 seconds at the silences VAD finds, which its
+author measured about 4 WER points better on a 57-minute recording
+(`LECTURE_ASR_CHUNK_SECS`, 0 turns it off). And greedy decoding for the live
+pass on whisper.cpp, whose default beam of five made each pass half again as
+slow for the same words. It writes lowercase without punctuation.
 
 ## Design decisions
 
@@ -297,7 +319,7 @@ Check it with `schtasks /Query /TN lecture-notes`, and read
 
 **Known gaps on Windows.** Sleep inhibition uses `SetThreadExecutionState`,
 which stops idle sleep but not a lid close on every machine, so a recording can
-end early. Notifications fall back to a console line rather than a toast. And
+end early. There are no notifications; the recording window shows the state. And
 the Vulkan backend is Linux only. The benchmark runs on Windows too, so the
 model is measured rather than assumed, and Lithuanian gets the dedicated
 model there as well.

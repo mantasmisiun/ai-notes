@@ -22,17 +22,35 @@ COMPUTE = os.environ.get("LECTURE_ASR_COMPUTE", "float16")
 DEVICE  = os.environ.get("LECTURE_ASR_DEVICE", "cuda")
 LANGUAGE = os.environ.get("LECTURE_LANGUAGE", "en")
 
+# Cut into pieces of at most this many seconds at the silences VAD finds, each
+# transcribed on its own. 0 keeps faster-whisper's default: all speech joined
+# up and read through a sliding 30-second window. Ąžuolas's author measured
+# 22-second pieces cut this way about 4 WER points better on a 57-minute
+# recording, so the installer sets 22 for Lithuanian. Batched pieces also run
+# several at once, which is faster on a GPU; LECTURE_ASR_BATCH sets how many,
+# kept low because Ollama may still hold most of the card.
+CHUNK = int(float(os.environ.get("LECTURE_ASR_CHUNK_SECS", "0") or 0))
+BATCH = int(os.environ.get("LECTURE_ASR_BATCH", "4") or 4)
+
 model = WhisperModel(MODEL, device=DEVICE, compute_type=COMPUTE)
 # condition_on_previous_text is off: with it on, a repetition loop that starts
 # in a noisy passage feeds itself into the next segment and the next, and a
 # five-minute news broadcast came back with "suvelnių" forty times in a row.
-# The live worker already runs without it.
+# The live worker already runs without it. VAD is never off: Ąžuolas writes
+# fluent Lithuanian over silence without it.
 import asr_prompt
-segments, info = model.transcribe(
-    audio, language=LANGUAGE, vad_filter=True,
-    vad_parameters=dict(min_silence_duration_ms=500),
-    beam_size=5, condition_on_previous_text=False,
-    hotwords=asr_prompt.initial_prompt(MODEL, LANGUAGE) or None)
+common = dict(language=LANGUAGE, vad_filter=True,
+              vad_parameters=dict(min_silence_duration_ms=500),
+              beam_size=5, condition_on_previous_text=False,
+              hotwords=asr_prompt.initial_prompt(MODEL, LANGUAGE) or None)
+if CHUNK > 0:
+    from faster_whisper import BatchedInferencePipeline
+    # Timestamps on: without them faster-whisper 1.2.1 gave some pieces a
+    # start of -942 s, and the time markers came out as "-1 day, 23:44:18".
+    segments, info = BatchedInferencePipeline(model).transcribe(
+        audio, chunk_length=CHUNK, batch_size=BATCH, without_timestamps=False, **common)
+else:
+    segments, info = model.transcribe(audio, **common)
 
 # The same guards as the live worker: Whisper's own rule for narrated silence,
 # compression ratio for repetition, and a word-level check for a stretched
@@ -59,6 +77,8 @@ with open(tmp, "w", encoding="utf-8") as f:
     f.write("---\n")
     f.write("type: lecture-transcript-accurate\n")
     f.write(f"model: {MODEL}\n")
+    if CHUNK > 0:
+        f.write(f"chunked: {CHUNK}s\n")
     f.write(f"duration: {stamp(info.duration)}\n")
     # how much of the file this was made from; the pipeline redoes a
     # transcript made from a file that was still arriving
