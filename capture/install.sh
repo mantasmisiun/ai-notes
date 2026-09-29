@@ -69,7 +69,9 @@ fi
 
 python3 -m venv "$DIR/venv"
 "$DIR/venv/bin/pip" install -q --upgrade pip
-"$DIR/venv/bin/pip" install -q faster-whisper numpy PyQt6
+# av<19: PyAV 19 dropped av.open(metadata_errors=), which faster-whisper 1.2.1
+# passes, so every file it opened failed with a TypeError.
+"$DIR/venv/bin/pip" install -q faster-whisper "av<19" numpy PyQt6
 
 # The benchmark and the live pass run from this venv, so an NVIDIA machine
 # needs the CUDA libraries here too, not only in the processing one.

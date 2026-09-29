@@ -335,7 +335,9 @@ if (-not (Test-Path "$Root\capture\venv\Scripts\python.exe")) {
     }
 }
 & "$Root\capture\venv\Scripts\python.exe" -m pip install -q --upgrade pip
-& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper numpy PyQt6 pypdf
+# av<19: PyAV 19 dropped av.open(metadata_errors=), which faster-whisper 1.2.1
+# passes, so every file it opened failed with a TypeError. Quoted: < is an operator.
+& "$Root\capture\venv\Scripts\pip.exe" install -q faster-whisper "av<19" numpy PyQt6 pypdf
 if ($nvidia.Count -gt 0) {
     # The benchmark and the live pass run from THIS venv, so the CUDA libraries
     # have to be here. Without them faster-whisper reports a missing
@@ -440,7 +442,7 @@ if ($wantProcess -eq 1) {
             Read-Host "Press Enter to close"; exit 1
         }
     }
-    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6 pypdf openpyxl
+    & "$Root\process\venv\Scripts\pip.exe" install -q faster-whisper "av<19" nvidia-cublas-cu12 nvidia-cudnn-cu12 PyQt6 pypdf openpyxl
     # The Linux installer's systemd timer, as a scheduled task. pythonw, so the
     # run every minute does not flash a console window; it logs to run.log.
     $sched = & "$Root\process\venv\Scripts\python.exe" -c "import sys; sys.path.insert(0, r'$Root\shared'); import platform_support as p; print(p.register_periodic('lecture-notes', [r'$Root\process\venv\Scripts\pythonw.exe', r'$Root\process\pipeline.py'], 1))"
