@@ -22,6 +22,7 @@ nothing left to do.
 """
 import os
 import re
+import time
 from pathlib import Path
 
 AUTO = "auto"
@@ -93,9 +94,58 @@ def _rewrite(text, pats):
     return text
 
 
-def migrate(notes, vault, log=print, uni=None):
+STAMP_LEN = len("2026-01-31 0900")
+SETTLE_SECS = 600
+
+
+def _stamp(name):
+    return name[:STAMP_LEN]
+
+
+def _trash(path, vault):
+    """Obsidian's own trash folder at the vault root: out of sight and out of
+    sync, and still there if the wrong copy was kept."""
+    d = Path(vault) / ".trash"
+    d.mkdir(parents=True, exist_ok=True)
+    dest, n = d / path.name, 1
+    while dest.exists():
+        dest = d / f"{path.stem} ({n}){path.suffix}"
+        n += 1
+    os.replace(path, dest)
+    return dest
+
+
+def keep_one(src, dest, vault, log=None):
+    """src is to end up at dest, where a copy already exists. Identical
+    copies are one note, so src goes; otherwise the newer is kept at dest and
+    the older goes to the trash. Leaving both is what put two copies of the
+    same note in front of the user."""
+    try:
+        if src.read_bytes() == dest.read_bytes():
+            src.unlink()
+            return
+        if src.stat().st_mtime > dest.stat().st_mtime:
+            gone = _trash(dest, vault)
+            os.replace(src, dest)
+        else:
+            gone = _trash(src, vault)
+    except OSError as e:
+        if log:
+            log(f"layout: could not settle {src.name} against {dest}: {e}")
+        return
+    if log:
+        log(f"layout: two copies of {dest.name}; kept the newer at {dest.parent.name}, "
+            f"the other is in {gone.parent.name}")
+
+
+def migrate(notes, vault, log=print, uni=None, min_age=SETTLE_SECS):
     """Move an old-layout vault under auto/ and rewrite the links. Returns
-    True when there was something to move."""
+    True when there was something to move.
+
+    A recording is left alone while any of its files changed in the last
+    min_age seconds. A recorder older than this layout writes its live note
+    and the user's note into the old folders, and moving them mid-lecture
+    crashed it and left a copy in each place."""
     notes, vault = Path(notes), Path(vault)
     # the inbox briefly lived at auto/documents, then at University/Files;
     # it is Files at the vault root, and only that folder is watched
@@ -121,19 +171,34 @@ def migrate(notes, vault, log=print, uni=None):
     old += [k for k in RAW_OLD if (notes / k).is_dir()]
     if not old:
         return False
+    cutoff = time.time() - min_age
+    busy = set()
+    # the live note is rewritten every few seconds, the user's note only when
+    # they type, so a recording is judged by whichever changed last
+    for d in [notes / k for k in old] + [auto_dir(notes, "live")]:
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            try:
+                if f.is_file() and f.stat().st_mtime > cutoff:
+                    busy.add(_stamp(f.name))
+            except OSError:
+                pass
     moved = 0
     for k in old:
         src = notes / k
         dst = raw_dir(notes) if k in RAW_OLD else auto_dir(notes, k)
         dst.mkdir(parents=True, exist_ok=True)
         for f in list(src.iterdir()):
-            if f.is_dir():
+            if f.is_dir() or _stamp(f.name) in busy:
                 continue
             target = dst / f.name
             if target.exists():
+                if k in RAW_OLD:
+                    keep_one(f, target, vault, log)
                 # the other machine moved it already and sync delivered both;
                 # the leftover is redundant only if it is the same file
-                if f.stat().st_size == target.stat().st_size:
+                elif f.stat().st_size == target.stat().st_size:
                     f.unlink()
                 else:
                     log(f"layout: {target.name} already exists with a different size; "
@@ -144,14 +209,18 @@ def migrate(notes, vault, log=print, uni=None):
         try:
             src.rmdir()
         except OSError:
-            log(f"layout: {src} is not empty and was left in place")
+            if not busy:
+                log(f"layout: {src} is not empty and was left in place")
+    if busy:
+        log(f"layout: left {', '.join(sorted(busy))} in place, changed in the "
+            f"last {min_age // 60} min")
 
     pats = _patterns(notes.name)
     changed = 0
     for root, dirs, files in os.walk(vault):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
         for fn in files:
-            if not fn.endswith(".md"):
+            if not fn.endswith(".md") or _stamp(fn) in busy:
                 continue
             p = Path(root) / fn
             try:
@@ -316,9 +385,12 @@ def file_into_module(vault, notes, module_dir, key, source_path=None, log=None):
         if not p.exists():
             _write_if_changed(p, MY_NOTES_ABOUT)
         dest = dest_dir / note.name
-        if not dest.exists():
-            old_rel, new_rel = _rel(note, vault), _rel(dest, vault)
+        old_rel, new_rel = _rel(note, vault), _rel(dest, vault)
+        if dest.exists():
+            keep_one(note, dest, vault, log)
+        else:
             os.replace(note, dest)
+        if not note.exists():
             rewrite_links(vault, old_rel, new_rel, log)
             moved.append(("note", new_rel))
     if source_path:

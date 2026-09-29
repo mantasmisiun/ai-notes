@@ -580,6 +580,13 @@ if os.path.basename(dest_dir) == SESSIONS:
 if os.path.basename(dest_dir) == layout.DOCUMENTS:
     layout.write_documents_about(dest_dir)
 out = OUT_PATH or os.path.join(dest_dir, fname)
+# A note written to unfiled before your note named a module moves there once
+# it does. Rewriting it in place kept it in unfiled for good.
+moved_from = ""
+if (OUT_PATH and os.path.basename(dest_dir) in (SESSIONS, layout.DOCUMENTS)
+        and os.path.abspath(os.path.dirname(OUT_PATH)) == os.path.abspath(layout.auto_dir(NOTES, "unfiled"))
+        and not os.path.exists(os.path.join(dest_dir, os.path.basename(OUT_PATH)))):
+    moved_from, out = OUT_PATH, os.path.join(dest_dir, os.path.basename(OUT_PATH))
 tmp = out + ".tmp"
 
 audio = None
@@ -624,6 +631,15 @@ with open(tmp, "w", encoding="utf-8") as f:
         f.write(f"\n![[{audio}]]\n")
 
 os.replace(tmp, out)
+if moved_from:
+    try:
+        os.remove(moved_from)
+        layout.rewrite_links(VAULT, os.path.relpath(moved_from, VAULT)[:-3].replace(os.sep, "/"),
+                             os.path.relpath(out, VAULT)[:-3].replace(os.sep, "/"),
+                             log=lambda m: print("  " + m, flush=True))
+        print(f"  filed: out of unfiled -> {os.path.relpath(out, VAULT)}", flush=True)
+    except OSError as e:
+        print(f"  could not remove {moved_from}: {e}", flush=True)
 
 # record the session in a timetable the pipeline owns. A hand-maintained
 # schedule is left alone: ensure_generated returns None for one it did not write.
@@ -652,9 +668,11 @@ try:
         # note moves to <module>/my notes, a document to <module>/Files, and
         # every link to them is rewritten. The inbox then holds only what is
         # not yet filed.
-        if os.path.basename(dest_dir) in (SESSIONS, layout.DOCUMENTS):
-            module_dir = os.path.dirname(out)
-            module_dir = os.path.dirname(module_dir)
+        # Judged by where the note is, not where it would go: a note rewritten
+        # in place in unfiled once made auto/ its "module", and the user's
+        # note moved to Transcriptions/auto/my notes.
+        if os.path.basename(os.path.dirname(out)) in (SESSIONS, layout.DOCUMENTS):
+            module_dir = os.path.dirname(os.path.dirname(out))
             for what, new_rel in layout.file_into_module(
                     VAULT, NOTES, module_dir, stamp,
                     source_path=SOURCE_PATH if IS_DOCUMENT else None,

@@ -77,11 +77,41 @@ def log(msg):
         pass
 
 
+# The note is bookkeeping; the audio is the recording. Every write to the note
+# survives the file or its folder vanishing, which is what happened when
+# another machine moved them mid-lecture: the worker died and took the rest of
+# the lecture with it. What was written is also kept here, so a note that
+# disappears is recreated whole on the next write.
+try:
+    _written = open(note_path, encoding="utf-8").read()
+except OSError:
+    _written = ""
+_note_failed = False
+
+
+def _note_write(mode, text):
+    global _note_failed
+    try:
+        os.makedirs(os.path.dirname(note_path), exist_ok=True)
+        if mode == "a" and not os.path.exists(note_path):
+            mode, text = "w", _written
+        with open(note_path, mode, encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if _note_failed:
+            log("the note is writable again")
+        _note_failed = False
+    except OSError as e:
+        if not _note_failed:
+            log(f"could not write the note, recording continues: {e}")
+        _note_failed = True
+
+
 def append(text):
-    with open(note_path, "a", encoding="utf-8") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
+    global _written
+    _written += text
+    _note_write("a", text)
 
 
 # A chunk of two or more characters repeated three or more times inside one
@@ -234,11 +264,10 @@ class Live:
         self.settled_until = 0.0   # audio seconds covered by settled
 
     def write(self, provisional=""):
+        global _written
         body = (self.settled + provisional).strip()
-        with open(note_path, "w", encoding="utf-8") as f:
-            f.write(self.header + body + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        _written = self.header + body + "\n"
+        _note_write("w", _written)
 
     def update(self, backend, buf_bytes, buf_start, now):
         # Only the last SETTLE_LAG seconds are still in flux: a word needs a
@@ -318,8 +347,9 @@ def finalise():
             notes_root = notes_root.parent
         stamp_ = Path(ogg_path).stem
         import layout
-        rn = layout.raw_dir(notes_root) / f"{stamp_}.md"
-        if rn.exists():
+        # looked up by name: the note may have been filed while recording
+        rn = layout.find_my_note(vault, notes_root, stamp_)
+        if rn:
             rawnote.set_field(rn, "End", f"{datetime.datetime.now():%Y-%m-%d %H:%M}")
     except Exception:
         pass                       # never let bookkeeping lose a recording
@@ -452,7 +482,10 @@ def main():
 
     # Everything record.py and the load messages wrote stays as the header; the
     # body below it is rewritten each pass because the tail can change.
-    header = open(note_path, encoding="utf-8").read()
+    try:
+        header = open(note_path, encoding="utf-8").read()
+    except OSError:
+        header = _written
     live = Live(header)
 
     buf = b""                 # the rolling window, at most win_bytes

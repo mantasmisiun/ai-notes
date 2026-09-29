@@ -23,6 +23,7 @@ import layout
 import document
 import notehash
 import rawnote
+import recording
 
 # Room for whisper large-v3 in float16: about 3 GB of weights plus working
 # memory. Only transcription is gated on this; see main().
@@ -86,6 +87,24 @@ def main():
         return 0
 
     try:
+        # Never process during a recording on this same machine: the live
+        # transcript has a person waiting on it and wins the GPU. Checked
+        # before anything below touches the vault.
+        rec = ps.state_dir("lecture-pipeline") / "record.lock"
+        if rec.exists():
+            probe = ps.Lock(rec)
+            if not probe.acquire():
+                log("defer: a recording is in progress on this machine")
+                return 0
+            probe.release()
+
+        # Nor while one runs on another machine. Its lease is the only sign of
+        # it here; see shared/recording.py for why its content, not its mtime.
+        away = recording.active(NOTES, STATE)
+        if away:
+            log(f"defer: recording in progress elsewhere ({', '.join(sorted(away))})")
+            return 0
+
         # Generated folders live under auto/. An old flat vault is moved and its
         # links rewritten once; markers that still name the old note paths are
         # repaired so nothing is summarised twice.
@@ -94,16 +113,6 @@ def main():
         layout.ensure_files(VAULT)
         layout.fix_markers(NOTES, STATE)
         layout.write_about(NOTES, KEEP_AUDIO_DAYS)
-
-        # Never process during a recording on this same machine: the live
-        # transcript has a person waiting on it and wins the GPU.
-        rec = ps.state_dir("lecture-pipeline") / "record.lock"
-        if rec.exists():
-            probe = ps.Lock(rec)
-            if not probe.acquire():
-                log("defer: a recording is in progress on this machine")
-                return 0
-            probe.release()
 
         free = gpu_free_mib()
 
@@ -218,7 +227,17 @@ def stage_refresh(NOTES, VAULT, env):
             continue                       # written before hashes existed
         current = notehash.norm_hash(rawnote.body(mynote))
         edited_flag = STATE / f"{key}.handedited"
-        if current == was:
+        # Filling in the table does not change what the hash covers, so a note
+        # in unfiled never moved once its Area and Subject were given. It is
+        # written again, into its module, once for each new answer: a Schedule
+        # that does not resolve must not rewrite it every minute.
+        filing, tried, sig = False, STATE / f"{key}.filed_for", ""
+        if note.parent.resolve() == layout.auto_dir(NOTES, "unfiled").resolve():
+            t = rawnote.parse(mynote)
+            if t["Schedule"] or (t["Area"] and t["Subject"]):
+                sig = f'{t["Schedule"]}|{t["Area"]}|{t["Subject"]}'
+                filing = not (tried.exists() and tried.read_text(encoding="utf-8") == sig)
+        if current == was and not filing:
             edited_flag.unlink(missing_ok=True)
             continue
         if notehash.norm_hash(notehash.generated_body(text).rstrip()) != notehash.frontmatter_field(text, "content_hash"):
@@ -230,13 +249,21 @@ def stage_refresh(NOTES, VAULT, env):
         transcript = layout.auto_dir(NOTES, "transcripts") / f"{key}.md"
         if not transcript.exists():
             continue
-        log(f"refresh: {key}: your note changed, writing the finished note again")
+        if filing:
+            tried.write_text(sig, encoding="utf-8")
+            log(f"refresh: {key}: your note names its module now, filing the finished note")
+        else:
+            log(f"refresh: {key}: your note changed, writing the finished note again")
         r = subprocess.run([venv_py(), str(HERE / "summarise.py"), str(transcript), key, str(VAULT)],
                            env=dict(env, LECTURE_OUT_PATH=str(note)), text=True, encoding="utf-8", errors="replace",
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                            **ps.quiet_popen_kwargs())
         with open(LOG, "a", encoding="utf-8") as lf:
             lf.write(r.stdout)
+        # a note refreshed out of unfiled has moved into its module
+        m = re.search(r"^NOTE_PATH=(.+)$", r.stdout or "", re.M)
+        if r.returncode == 0 and m and m.group(1).strip() != str(note) and Path(m.group(1).strip()).exists():
+            marker.write_text(m.group(1).strip(), encoding="utf-8")
         log(f"refresh: {'done' if r.returncode == 0 else 'FAILED'} {key}")
         return True
     return False
